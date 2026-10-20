@@ -1,0 +1,19 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:8008:8008"
+    healthcheck:
+      # 이미지에 curl이 없어서 Python으로 /healthz를 호출한다. 200이 아니면 urlopen이 예외를 내고 실패로 판정된다.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8008/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    logging:
+      # 컨테이너 로그 파일이 10MB를 넘으면 새 파일로 넘기고, 최근 5개(최대 50MB)만 보관한다.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
