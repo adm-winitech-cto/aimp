@@ -23,7 +23,9 @@ def test_interface_example_maps_to_fields(example_request):
 
 def test_omitted_optional_keys_use_defaults(example_request):
     """optional 키를 생략하면 interface.md '생략 시 처리' 열의 기본값이 들어가는지 확인한다."""
-    for key in ("chiefComplaint", "symptoms", "majorSevereType", "vitalSigns", "medicalHistory", "medications", "remark"):
+    for key in (
+        "chiefComplaint", "symptoms", "majorSevereType", "vitalSigns", "medicalHistory", "medications", "remark", "requestCnt"
+    ):
         del example_request[key]
     del example_request["patientInfo"]["sex"]
     del example_request["patientInfo"]["patientType"]
@@ -41,6 +43,14 @@ def test_omitted_optional_keys_use_defaults(example_request):
     assert req.medical_history == []
     assert req.medications == []
     assert req.remark is None
+    assert req.request_cnt is None
+
+
+def test_request_cnt_accepts_integer(example_request):
+    """추천받을 병원 수에 정수가 오면 그 값이 들어가는지 확인한다."""
+    example_request["requestCnt"] = 2
+
+    assert RecommendRequest.model_validate(example_request).request_cnt == 2
 
 
 def test_age_accepts_fraction(example_request):

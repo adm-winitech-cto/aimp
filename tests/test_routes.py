@@ -59,6 +59,7 @@ NULLABLE = [
     ("specialPatientInfo", "pregnancyInfo"),
     ("specialPatientInfo", "newbornInfo"),
     ("remark",),
+    ("requestCnt",),
 ]
 
 
@@ -156,12 +157,29 @@ def test_pre_ktas_level_out_of_range_returns_400(client, example_request, level)
         (("patientInfo", "age"), "65"),
         (("preKtas", "level"), True),
         (("vitalSigns", 0, "spo2Percent"), "97"),
+        (("requestCnt",), True),
+        (("requestCnt",), "2"),
     ],
     ids=lambda v: _path_id(v) if isinstance(v, tuple) else repr(v),
 )
 def test_non_number_on_number_field_returns_400(client, example_request, path, value):
     """숫자 필드에 불리언이나 문자열이 오면 숫자로 바꾸지 않고 400을 반환하는지 확인한다."""
     _parent(example_request, path)[path[-1]] = value
+
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
+
+
+@pytest.mark.parametrize("value", [0, -1])
+def test_request_cnt_below_1_returns_400(client, example_request, value):
+    """추천받을 병원 수(requestCnt)가 1보다 작으면 400을 반환하는지 확인한다."""
+    example_request["requestCnt"] = value
+
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
+
+
+def test_fraction_on_integer_field_returns_400(client, example_request):
+    """정수 필드(requestCnt)에 소수가 오면 정수로 바꾸지 않고 400을 반환하는지 확인한다."""
+    example_request["requestCnt"] = 1.5
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 

@@ -52,5 +52,6 @@
     "patientLocation": {
         "longitude": 128.5911,
         "latitude": 35.8714
-    }
+    },
+    "requestCnt": 3
 }

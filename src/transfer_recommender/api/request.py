@@ -94,3 +94,4 @@ class RecommendRequest(_RequestModel):
     special_patient_info: SpecialPatientInfo
     remark: str | None = None
     patient_location: PatientLocation
+    request_cnt: int | None = Field(default=None, ge=1)

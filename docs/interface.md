@@ -75,7 +75,8 @@
     "patientLocation": {                      // 환자위치
         "longitude": 128.5911,                // 환자X좌표 (경도)
         "latitude": 35.8714                   // 환자Y좌표 (위도)
-    }
+    },
+    "requestCnt": 3                           // 추천병원수
 }
 ```
 
@@ -127,11 +128,13 @@
 | `patientLocation` | object | Y | - | 환자 위치 |
 | `patientLocation.longitude` | number | Y | - | 환자 위치 경도 (WGS84, 도 단위 십진수) |
 | `patientLocation.latitude` | number | Y | - | 환자 위치 위도 (WGS84, 도 단위 십진수) |
+| `requestCnt` | number \| null | N | `null` | 추천받을 병원 수 (1 이상의 정수). `null`이면 시스템은 기본값(3개)만큼 추천 |
 
 **미정 항목:**
 - 요청 Endpoint
 - 값 목록: `patientInfo.sex`, `patientInfo.patientType`, `consciousnessLevel`, `majorSevereType`에 들어갈 수 있는 값 전체
 - 객체 구조: `medications`의 원소, `specialPatientInfo.pregnancyInfo`, `specialPatientInfo.newbornInfo`
+- `requestCnt`의 상한
 - 필수 여부 확인: 현장에서 `patientInfo.age`와 `consciousnessLevel`이 항상 입력되는지
     - 비어서 오는 경우가 있으면 두 필드를 optional로 바꾸고, 시스템은 값이 없을 때 가장 중증인 판정을 적용합니다 (예: 나이가 없으면 '소아응급 진료 가능' 조건을 추가).
 
