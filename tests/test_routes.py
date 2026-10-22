@@ -177,6 +177,25 @@ def test_non_finite_number_returns_400(client, example_request, value):
     assert response.status_code == 400
 
 
+@pytest.mark.parametrize("value", ["심정지", "중증외상", "뇌졸중", "심근경색"])
+def test_major_severe_type_values_pass_validation(client, example_request, value):
+    """majorSevereType에 4대 중증 4종이 오면 요청 검증을 통과하는지 확인한다."""
+    example_request["majorSevereType"] = value
+
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 501
+
+
+@pytest.mark.parametrize("value", ["없음", "심정지 ", ""])
+def test_unknown_major_severe_type_returns_400(client, example_request, value):
+    """majorSevereType에 4대 중증 4종이 아닌 값(공백이 붙은 값 포함)이 오면 무시하지 않고 400을 반환하는지 확인한다."""
+    example_request["majorSevereType"] = value
+
+    response = client.post(RECOMMEND_PATH, json=example_request)
+
+    assert response.status_code == 400
+    assert response.json()["detail"][0]["loc"] == ["body", "majorSevereType"]
+
+
 def test_unknown_key_returns_400(client, example_request):
     """명세에 없는 키(예: camelCase가 아닌 vital_signs)가 오면 기본값으로 넘어가지 않고 400을 반환하는지 확인한다."""
     example_request["vital_signs"] = example_request.pop("vitalSigns")
