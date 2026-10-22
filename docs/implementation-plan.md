@@ -125,7 +125,7 @@ tests/
 └── ...                           # 모듈별 단위 테스트, 입력부터 응답까지 전체 흐름 테스트, 테스트용 가짜 LlmClient
 eval/                             # 평가셋 생성, 평가 실행, 리포트
 Dockerfile                        # 앱 이미지 (python:3.12-slim, root가 아닌 사용자로 실행)
-docker-compose.yml                # 앱, vLLM
+compose.yaml                      # 앱, vLLM
 ```
 
 ### 2.3 처리 단계와 모듈
@@ -225,7 +225,7 @@ design.md '나중에 추가할 항목'은 지금 모듈을 만들지 않는다. 
 | | 응답 스키마 초안 | `domain/recommendation.py`, `api/response.py`, interface.md 'Response Body' | 프로젝트 골격과 도메인 타입 | | |
 | | 처리 파이프라인과 전체 흐름 | `pipeline.py` | '요청 검증·환자 분류·규칙 엔진' 묶음의 일감 전부, 후보 필터, ETA 계산, fallback 선정, 응답 스키마 초안 | | |
 | LLM 최종 선정 (구현 순서 3단계) | 출력 스키마와 프롬프트 v1 | `selection/output_schema.py`, `selection/prompt.py`, `selection/prompts/final_selection_v1.md` | 후보 필터 | | |
-| | LlmClient와 vLLM 연동 | `llm_client.py`의 LangChain 기반 vLLM 구현, `docker-compose.yml` | 환자 상태 판단, 출력 스키마와 프롬프트 v1 | △ | |
+| | LlmClient와 vLLM 연동 | `llm_client.py`의 LangChain 기반 vLLM 구현, `compose.yaml` | 환자 상태 판단, 출력 스키마와 프롬프트 v1 | △ | |
 | | LLM 출력 검증과 우회 판정 | `selection/validator.py`, `selection/detour.py` | 출력 스키마와 프롬프트 v1 | | |
 | | 최종 선정 통합 | `pipeline.py` 수정 | 처리 파이프라인과 전체 흐름, LlmClient와 vLLM 연동, LLM 출력 검증과 우회 판정 | | |
 | 모델 평가 (구현 순서 4단계) | 평가셋 구축 | `eval/` 평가셋 생성 스크립트, 평가셋 | 요청 스키마와 검증 | | - |
@@ -236,7 +236,7 @@ design.md '나중에 추가할 항목'은 지금 모듈을 만들지 않는다. 
     - 구현: 산출물 코드를 커밋했고 단위 테스트가 통과하면 ✅, 일부만 했으면 △다.
     - 통합: API 요청을 처리할 때 이 일감의 코드가 실행되면(`main.py`나 `pipeline.py`에서 호출되면) ✅다. 요청 처리와 관계없는 일감은 -다.
     - 빈칸은 아직 하지 않은 것이다.
-- 'LlmClient와 vLLM 연동'(△): `VllmClient`는 구현했고, 로컬 vLLM에서 환자 상태 판단 출력 모델로 호출을 확인했다. 남은 것은 `docker-compose.yml`의 vLLM 서비스와, 최종 선정 출력 모델로 하는 확인이다.
+- 'LlmClient와 vLLM 연동'(△): `VllmClient`는 구현했고, 로컬 vLLM에서 환자 상태 판단 출력 모델로 호출을 확인했다. 남은 것은 `compose.yaml`의 vLLM 서비스와, 최종 선정 출력 모델로 하는 확인이다.
 - '병원 데이터 조회와 mock 병원 DB': `main` 브랜치의 git stash에 `domain/hospital.py`, `hospitals/repository.py` 작업이 있지만 커밋하지 않아서 구현으로 세지 않았다.
 
 ### 3.2 요청 검증·환자 분류·규칙 엔진
@@ -497,13 +497,13 @@ design.md '구현 순서' 3단계에 해당한다.
 
 #### LlmClient와 vLLM 연동
 
-- 산출물: `llm_client.py`의 LangChain 기반 vLLM 구현, `docker-compose.yml`
+- 산출물: `llm_client.py`의 LangChain 기반 vLLM 구현, `compose.yaml`
 - 작업
     - 개발팀은 `llm_client.py`에 LangChain 기반 vLLM 구현을 추가한다. `LlmClient` 인터페이스는 '환자 상태 판단' 일감에서 만든다. 환자 상태 판단과 최종 선정이 이 구현을 함께 쓴다.
         - `ChatOpenAI`에 vLLM 주소, 모델 이름, `temperature=0`, 제한 시간, `max_retries=0`을 지정한다. `max_retries`를 0으로 두지 않으면 재시도 때문에 제한 시간을 넘길 수 있다. 제한 시간은 호출하는 단계(환자 상태 판단, 최종 선정)마다 `settings.py`의 값을 쓴다.
         - `with_structured_output(출력 모델, method="json_schema", include_raw=True)`로 구조화 출력을 요청한다. `include_raw=True`는 나중에 감사 로그에 저장할 LLM 원문 출력을 보존한다. LangChain이 파싱에 실패하면(`parsing_error` 값이 있으면) 구현은 실패 사유 '검증 실패'를 반환한다.
         - `llm_client.py`는 호출 전에 vLLM `/metrics`의 `vllm:num_requests_waiting` 값을 읽는다. 값이 상한을 넘으면 `llm_client.py`는 LLM을 호출하지 않고 "대기 요청 초과"를 반환한다.
-    - 개발팀은 `docker-compose.yml`에 앱과 vLLM 서비스를 정의한다.
+    - 개발팀은 `compose.yaml`에 앱과 vLLM 서비스를 정의한다.
 - 완료 기준
     - 운영할 vLLM 버전에서 `method="json_schema"` 요청이 환자 상태 판단과 최종 선정의 출력 모델로 동작한다(출력 모델마다 예시 요청 1건으로 확인).
 - 미결 사항: 후보 모델 세부 사양, vLLM 대기 요청 상한 값
