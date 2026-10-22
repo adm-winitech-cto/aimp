@@ -1,0 +1,39 @@
+{
+  "pre_ktas": {
+    "level": 2,
+    "assessment_detail": "15세 이상 - 근골격계 - 하지 손상 - 개방성 골절 또는 신경혈관 장애"
+  },
+  "age": 65.0,
+  "sex": "남",
+  "chief_complaint": "발등 개방성 골절",
+  "symptoms": [
+    "골절",
+    "열상"
+  ],
+  "consciousness_level": "명료",
+  "vital_signs": [
+    {
+      "recorded_at": "2026-08-31T17:11:26",
+      "systolic_bp_mm_hg": 110.0,
+      "diastolic_bp_mm_hg": 90.0,
+      "pulse_per_min": 97.0,
+      "respiratory_rate_per_min": 18.0,
+      "body_temp_celsius": 36.8,
+      "spo2_percent": 97.0,
+      "blood_glucose_mg_dl": 210.0
+    }
+  ],
+  "medical_history": [
+    {
+      "disease_name": "뇌혈관질환"
+    },
+    {
+      "disease_name": "당뇨"
+    },
+    {
+      "disease_name": "기타",
+      "detail": "고지혈증"
+    }
+  ],
+  "remark": "자유서술"
+}

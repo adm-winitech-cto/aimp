@@ -8,8 +8,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/ src/
-
 # root가 아닌 사용자로 실행한다.
 RUN useradd --system app
 USER app

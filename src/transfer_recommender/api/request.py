@@ -7,13 +7,16 @@
 - 명세에 없는 키가 오면 검증에 실패한다. 키 이름에 오타가 나서 값이 기본값으로 바뀌는 것을 막는다.
 
 값 목록과 객체 구조가 미정인 필드는 문자열이나 임의 객체로 받는다(interface.md '미정 항목').
+`majorSevereType`은 예외로 4대 중증 4종만 받는다. 시스템이 모르는 값을 무시하면 4대 중증 환자를 일반 환자로 분류하기 때문이다.
 """
 
 from datetime import datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, Strict
 from pydantic.alias_generators import to_camel
+
+from transfer_recommender.domain.types import SevereType
 
 TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -82,7 +85,8 @@ class RecommendRequest(_RequestModel):
     chief_complaint: str | None = None
     symptoms: list[str] = []
     consciousness_level: str
-    major_severe_type: str | None = None
+    # strict 모드는 열거형 인스턴스만 받으므로, 이 필드만 strict를 꺼서 문자열 값을 열거형으로 바꾼다.
+    major_severe_type: Annotated[SevereType, Strict(False)] | None = None
     pre_ktas: PreKtas
     vital_signs: list[VitalSign] = []
     medical_history: list[MedicalHistory] = []
