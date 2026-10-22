@@ -1,7 +1,7 @@
 """로깅 설정.
 
 - 앱은 로그를 표준 출력으로 내보낸다. 컨테이너에서는 Docker가 표준 출력을 수집하고,
-  docker-compose.yml의 logging 설정으로 로그 파일을 순환한다.
+  compose.yaml의 logging 설정으로 로그 파일을 순환한다.
 - 로그 레벨은 LOG_LEVEL 환경 변수로 정한다(기본 INFO).
 - 요청 본문은 INFO 레벨로 남는다(main.log_request_body). 요청 본문에는 환자 정보(나이, 위치, 비고 등)가 들어 있다.
 """
