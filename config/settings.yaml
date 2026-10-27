@@ -1,4 +1,4 @@
-recommend_count: 3  # N: 추천 개수 (design.md 기본값)
+recommend_count: 10  # N: 추천 개수. 요청의 recommendCount가 null일 때 쓴다 (interface.md 기본값)
 llm_candidate_count: 15  # M: LLM 프롬프트에 넣는 후보 수 (design.md 예시 범위 10~15)
 detour_threshold_km: 3.0  # X: 우회 판정 거리 기준 (임시값)
 bed_data_max_age_minutes: 15  # 병상 데이터 신선도 임계치 (design.md 예시 범위 10~15분)
@@ -12,5 +12,5 @@ assessment_prompt_version: patient_assessment_v1  # 환자 상태 판단 (classi
 prompt_version: final_selection_v1  # 최종 선정 (selection/prompts/)
 
 # vLLM 서버 주소
-vllm_url: http://localhost:8000
+vllm_url: http://localhost:8099
 vllm_model: Qwen/Qwen3.8-Flash-Next-FP8

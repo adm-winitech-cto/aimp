@@ -76,7 +76,15 @@ class VllmClient:
         self._metrics_url = f"{url}/metrics"
         self._max_waiting_requests = max_waiting_requests
         # vLLM은 API 키를 검사하지 않지만 ChatOpenAI는 값이 있어야 한다.
-        self._llm = ChatOpenAI(base_url=f"{url}/v1", api_key="EMPTY", model=model, temperature=0, max_retries=0)
+        # Qwen3 계열은 기본으로 추론(thinking) 토큰을 수천 개 생성해 호출이 수십 초 걸리므로 끈다.
+        self._llm = ChatOpenAI(
+            base_url=f"{url}/v1",
+            api_key="EMPTY",
+            model=model,
+            temperature=0,
+            max_retries=0,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
 
     def invoke[T: BaseModel](
         self, messages: list[ChatMessage], response_format: type[T], timeout: float

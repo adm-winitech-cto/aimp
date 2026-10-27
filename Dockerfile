@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN useradd --system app
 USER app
 
-EXPOSE 8008
-CMD ["uvicorn", "transfer_recommender.main:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8008"]
+EXPOSE 8091
+CMD ["uvicorn", "transfer_recommender.main:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8091"]
