@@ -3,9 +3,9 @@
 from fastapi import APIRouter, HTTPException, status
 
 from transfer_recommender.api.request import RecommendRequest
+from transfer_recommender.api.response import RecommendResponse
 
-# interface.md에서 엔드포인트가 미정이라 임시 경로를 쓴다.
-RECOMMEND_PATH = "/recommendations"
+RECOMMEND_PATH = "/api/v1/recHosp"
 
 router = APIRouter()
 
@@ -17,6 +17,6 @@ def healthz() -> dict[str, str]:
 
 
 @router.post(RECOMMEND_PATH)
-def recommend(body: RecommendRequest) -> None:
+def recommend(body: RecommendRequest) -> RecommendResponse:
     # 처리 파이프라인은 '처리 파이프라인과 전체 흐름' 일감에서 연결한다.
     raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "추천 처리는 아직 구현되지 않았습니다")

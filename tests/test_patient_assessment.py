@@ -6,7 +6,7 @@ import pytest
 from fake_llm import FakeLlmClient
 from pydantic import ValidationError
 
-from transfer_recommender.api.request import RecommendRequest
+from transfer_recommender.api.request import Patient
 from transfer_recommender.classification import patient_assessment
 from transfer_recommender.domain.patient import PatientAssessment
 from transfer_recommender.domain.types import (
@@ -31,12 +31,12 @@ OPEN_FRACTURE = PatientAssessment(
 )
 
 
-def test_open_fracture_messages_match_fixtures(example_request):
+def test_open_fracture_messages_match_fixtures(example_patient):
     """발등 개방성 골절 예시로 만든 system·user 메시지가 기대 파일과 같은지 확인한다.
 
     프롬프트나 LLM 입력 객체를 바꾸면 이 테스트가 실패하므로, 바뀐 메시지를 검토한 뒤 기대 파일을 함께 고친다.
     """
-    messages = patient_assessment.build_messages(RecommendRequest.model_validate(example_request))
+    messages = patient_assessment.build_messages(Patient.model_validate(example_patient))
 
     assert messages == [
         {"role": "system", "content": (FIXTURES / "patient_assessment_system.md").read_text(encoding="utf-8")},
@@ -44,13 +44,13 @@ def test_open_fracture_messages_match_fixtures(example_request):
     ]
 
 
-def test_input_includes_remark_and_pregnancy_info(example_request):
+def test_input_includes_remark_and_pregnancy_info(example_patient):
     """손상기전과 신체검사 소견이 비고에만 적힐 수 있고 임신 주수는 임산부 정보에 있으므로,
     LLM 입력 객체에 비고와 임산부 정보가 들어가는지 확인한다."""
-    example_request["remark"] = "3층 높이에서 추락"
-    example_request["specialPatientInfo"]["pregnancyInfo"] = {"weeks": 24}
+    example_patient["remark"] = "3층 높이에서 추락"
+    example_patient["specialInfo"]["pregnancyInfo"] = {"weeks": 24}
 
-    data = patient_assessment.build_input(RecommendRequest.model_validate(example_request))
+    data = patient_assessment.build_input(Patient.model_validate(example_patient))
 
     assert data["remark"] == "3층 높이에서 추락"
     assert data["pregnancy_info"] == {"weeks": 24}
@@ -66,31 +66,31 @@ def test_trauma_criteria_groups_cover_all_criteria():
 
 
 @pytest.mark.parametrize("failure", list(LlmFailure))
-def test_failure_returns_none_with_warning(example_request, failure):
+def test_failure_returns_none_with_warning(example_patient, failure):
     """LlmClient가 실패 사유를 반환하면 결과 없음(None)과 "환자 상태 판단 실패" 경고가 나오는지 확인한다."""
     warnings: list[WarningCode] = []
 
-    result = patient_assessment.assess(RecommendRequest.model_validate(example_request), FakeLlmClient(failure), warnings)
+    result = patient_assessment.assess(Patient.model_validate(example_patient), FakeLlmClient(failure), warnings)
 
     assert result is None
     assert warnings == [WarningCode.ASSESSMENT_FAILED]
 
 
-def test_success_returns_parsed_output(example_request):
+def test_success_returns_parsed_output(example_patient):
     """LlmClient가 정상 출력을 반환하면 파싱한 출력을 그대로 반환하고 경고를 추가하지 않는지 확인한다.
 
     LlmClient에는 출력 모델 PatientAssessment와 환자 상태 판단 제한 시간을 넘긴다.
     """
     client = FakeLlmClient(LlmOutput(parsed=OPEN_FRACTURE, raw=OPEN_FRACTURE.model_dump_json()))
     warnings: list[WarningCode] = []
-    req = RecommendRequest.model_validate(example_request)
+    patient = Patient.model_validate(example_patient)
 
-    result = patient_assessment.assess(req, client, warnings)
+    result = patient_assessment.assess(patient, client, warnings)
 
     assert result == OPEN_FRACTURE
     assert warnings == []
     [call] = client.calls
-    assert call.messages == patient_assessment.build_messages(req)
+    assert call.messages == patient_assessment.build_messages(patient)
     assert call.response_format is PatientAssessment
     assert call.timeout == settings.assessment_timeout_seconds
 

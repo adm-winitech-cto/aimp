@@ -1,23 +1,27 @@
 {
-    "patientInfo": {
-        "age": 65,
-        "sex": "남",
-        "patientType": "일반환자"
-    },
-    "chiefComplaint": "발등 개방성 골절",
-    "symptoms": [
-        "골절",
-        "열상"
-    ],
-    "consciousnessLevel": "명료",
-    "majorSevereType": null,
-    "preKtas": {
-        "assessmentRound": 1,
-        "level": 2,
-        "assessmentDetail": "15세 이상 - 근골격계 - 하지 손상 - 개방성 골절 또는 신경혈관 장애"
-    },
-    "vitalSigns": [
-        {
+    "incidentId": "INC-20260831-000123",
+    "requestSeq": 2,
+    "requestedAt": "2026-08-31 17:12:00",
+    "recommendCount": 3,
+    "patient": {
+        "info": {
+            "age": 65,
+            "sex": "남",
+            "patientType": "일반환자"
+        },
+        "chiefComplaint": "발등 개방성 골절",
+        "symptoms": [
+            "골절",
+            "열상"
+        ],
+        "consciousnessLevel": "명료",
+        "majorSevereType": null,
+        "preKtas": {
+            "assessmentRound": 1,
+            "level": 2,
+            "assessmentDetail": "15세 이상 - 근골격계 - 하지 손상 - 개방성 골절 또는 신경혈관 장애"
+        },
+        "vitalSigns": {
             "measuredAt": null,
             "recordedAt": "2026-08-31 17:11:26",
             "systolicBpMmHg": 110,
@@ -27,31 +31,37 @@
             "bodyTempCelsius": 36.8,
             "spo2Percent": 97,
             "bloodGlucoseMgDl": 210
-        }
-    ],
-    "medicalHistory": [
-        {
-            "diseaseName": "뇌혈관질환",
-            "detail": null
         },
-        {
-            "diseaseName": "당뇨",
-            "detail": null
+        "medicalHistory": [
+            {
+                "diseaseName": "뇌혈관질환",
+                "detail": null
+            },
+            {
+                "diseaseName": "당뇨",
+                "detail": null
+            },
+            {
+                "diseaseName": "기타",
+                "detail": "고지혈증"
+            }
+        ],
+        "medications": [],
+        "specialInfo": {
+            "pregnancyInfo": null,
+            "newbornInfo": null
         },
-        {
-            "diseaseName": "기타",
-            "detail": "고지혈증"
+        "remark": "자유서술",
+        "location": {
+            "longitude": 128.5911,
+            "latitude": 35.8714
         }
-    ],
-    "medications": [],
-    "specialPatientInfo": {
-        "pregnancyInfo": null,
-        "newbornInfo": null
     },
-    "remark": "자유서술",
-    "patientLocation": {
-        "longitude": 128.5911,
-        "latitude": 35.8714
-    },
-    "requestCnt": 3
+    "rejectedHospitals": [
+        {
+            "hospitalName": "OO대학교병원",
+            "reason": "응급실 병상 포화",
+            "rejectedAt": "2026-08-31 17:20:15"
+        }
+    ]
 }

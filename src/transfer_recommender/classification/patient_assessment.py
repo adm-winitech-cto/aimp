@@ -16,7 +16,7 @@ from pathlib import Path
 from string import Template
 from typing import Any
 
-from transfer_recommender.api.request import RecommendRequest
+from transfer_recommender.api.request import Patient
 from transfer_recommender.domain.patient import PatientAssessment
 from transfer_recommender.domain.types import (
     INJURY_FINDINGS,
@@ -56,35 +56,35 @@ def _render_system_prompt(version: str) -> str:
 SYSTEM_PROMPT = _render_system_prompt(settings.assessment_prompt_version)
 
 
-def build_input(req: RecommendRequest) -> dict[str, Any]:
+def build_input(patient: Patient) -> dict[str, Any]:
     """LLM 입력 객체. 키는 snake_case이고, 값이 없는(null이거나 빈 목록인) 키는 뺀다."""
     data = {
-        "pre_ktas": {"level": req.pre_ktas.level, "assessment_detail": req.pre_ktas.assessment_detail},
-        "age": req.patient_info.age,
-        "sex": req.patient_info.sex,
-        "chief_complaint": req.chief_complaint,
-        "symptoms": req.symptoms,
-        "consciousness_level": req.consciousness_level,
-        "vital_signs": [record.model_dump(mode="json", exclude_none=True) for record in req.vital_signs],
-        "medical_history": [history.model_dump(mode="json", exclude_none=True) for history in req.medical_history],
-        "medications": req.medications,
-        "pregnancy_info": req.special_patient_info.pregnancy_info,
-        "remark": req.remark,
+        "pre_ktas": {"level": patient.pre_ktas.level, "assessment_detail": patient.pre_ktas.assessment_detail},
+        "age": patient.info.age,
+        "sex": patient.info.sex,
+        "chief_complaint": patient.chief_complaint,
+        "symptoms": patient.symptoms,
+        "consciousness_level": patient.consciousness_level,
+        "vital_signs": patient.vital_signs.model_dump(mode="json", exclude_none=True) if patient.vital_signs else None,
+        "medical_history": [history.model_dump(mode="json", exclude_none=True) for history in patient.medical_history],
+        "medications": patient.medications,
+        "pregnancy_info": patient.special_info.pregnancy_info,
+        "remark": patient.remark,
     }
     return {key: value for key, value in data.items() if value not in (None, [])}
 
 
-def build_messages(req: RecommendRequest) -> list[ChatMessage]:
+def build_messages(patient: Patient) -> list[ChatMessage]:
     """[system 메시지, user 메시지]. user 메시지는 LLM 입력 객체를 JSON으로 바꾼 문자열이다."""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(build_input(req), ensure_ascii=False, indent=2)},
+        {"role": "user", "content": json.dumps(build_input(patient), ensure_ascii=False, indent=2)},
     ]
 
 
-def assess(req: RecommendRequest, llm_client: LlmClient, warnings: list[WarningCode]) -> PatientAssessment | None:
+def assess(patient: Patient, llm_client: LlmClient, warnings: list[WarningCode]) -> PatientAssessment | None:
     """LLM 호출이 실패하면 "환자 상태 판단 실패" 경고를 warnings에 추가하고 None을 반환한다."""
-    result = llm_client.invoke(build_messages(req), PatientAssessment, settings.assessment_timeout_seconds)
+    result = llm_client.invoke(build_messages(patient), PatientAssessment, settings.assessment_timeout_seconds)
     if isinstance(result, LlmFailure):
         logger.warning("환자 상태 판단 실패 reason=%s", result)
         warnings.append(WarningCode.ASSESSMENT_FAILED)

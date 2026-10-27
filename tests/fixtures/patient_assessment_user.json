@@ -11,18 +11,16 @@
     "열상"
   ],
   "consciousness_level": "명료",
-  "vital_signs": [
-    {
-      "recorded_at": "2026-08-31T17:11:26",
-      "systolic_bp_mm_hg": 110.0,
-      "diastolic_bp_mm_hg": 90.0,
-      "pulse_per_min": 97.0,
-      "respiratory_rate_per_min": 18.0,
-      "body_temp_celsius": 36.8,
-      "spo2_percent": 97.0,
-      "blood_glucose_mg_dl": 210.0
-    }
-  ],
+  "vital_signs": {
+    "recorded_at": "2026-08-31T17:11:26",
+    "systolic_bp_mm_hg": 110.0,
+    "diastolic_bp_mm_hg": 90.0,
+    "pulse_per_min": 97.0,
+    "respiratory_rate_per_min": 18.0,
+    "body_temp_celsius": 36.8,
+    "spo2_percent": 97.0,
+    "blood_glucose_mg_dl": 210.0
+  },
   "medical_history": [
     {
       "disease_name": "뇌혈관질환"
