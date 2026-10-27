@@ -97,8 +97,7 @@ def test_healthz_returns_ok(client):
 
 def test_valid_request_passes_validation(client, example_request):
     """interface.md 예시 요청이 요청 검증을 통과하는지 확인한다."""
-    # 검증을 통과하면 처리 파이프라인이 연결되기 전까지 501을 반환한다.
-    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 501
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 200
 
 
 @pytest.mark.parametrize("path", REQUIRED_KEYS, ids=_path_id)
@@ -125,7 +124,7 @@ def test_null_on_nullable_field_passes_validation(client, example_request, path)
     """null을 받는 필드에 null을 넣으면 요청 검증을 통과하는지 확인한다."""
     _parent(example_request, path)[path[-1]] = None
 
-    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 501
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -217,7 +216,7 @@ def test_major_severe_type_values_pass_validation(client, example_request, examp
     """majorSevereType에 4대 중증 4종이 오면 요청 검증을 통과하는지 확인한다."""
     example_patient["majorSevereType"] = value
 
-    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 501
+    assert client.post(RECOMMEND_PATH, json=example_request).status_code == 200
 
 
 @pytest.mark.parametrize("value", ["없음", "심정지 ", ""])
