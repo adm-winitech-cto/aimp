@@ -80,18 +80,32 @@ class PatientLocation(_RequestModel):
     latitude: float = Field(ge=-90, le=90)
 
 
-class RecommendRequest(_RequestModel):
-    patient_info: PatientInfo
+class Patient(_RequestModel):
+    info: PatientInfo
     chief_complaint: str | None = None
     symptoms: list[str] = []
     consciousness_level: str
     # strict 모드는 열거형 인스턴스만 받으므로, 이 필드만 strict를 꺼서 문자열 값을 열거형으로 바꾼다.
     major_severe_type: Annotated[SevereType, Strict(False)] | None = None
     pre_ktas: PreKtas
-    vital_signs: list[VitalSign] = []
+    vital_signs: VitalSign | None = None
     medical_history: list[MedicalHistory] = []
     medications: list[Any] = []
-    special_patient_info: SpecialPatientInfo
+    special_info: SpecialPatientInfo
     remark: str | None = None
-    patient_location: PatientLocation
-    request_cnt: int | None = Field(default=None, ge=1)
+    location: PatientLocation
+
+
+class RejectedHospital(_RequestModel):
+    hospital_name: str
+    reason: str | None = None
+    rejected_at: Timestamp
+
+
+class RecommendRequest(_RequestModel):
+    incident_id: str
+    request_seq: int = Field(ge=1)
+    requested_at: Timestamp
+    recommend_count: int | None = Field(default=None, ge=1)
+    patient: Patient
+    rejected_hospitals: list[RejectedHospital] = []

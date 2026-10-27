@@ -12,7 +12,7 @@ user 메시지는 환자 정보를 담은 JSON 객체 하나다. 값이 없는 �
 - chief_complaint: 주호소
 - symptoms: 증상 목록
 - consciousness_level: 의식상태
-- vital_signs: 활력징후 기록 목록
+- vital_signs: 활력징후
 - medical_history: 과거력 목록
 - medications: 투여약물 목록
 - pregnancy_info: 임산부 정보

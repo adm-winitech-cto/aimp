@@ -16,5 +16,11 @@ def example_request() -> dict:
 
 
 @pytest.fixture
+def example_patient(example_request) -> dict:
+    """예시 요청 본문의 patient 객체. 바꾸면 example_request에도 반영된다."""
+    return example_request["patient"]
+
+
+@pytest.fixture
 def client() -> TestClient:
     return TestClient(app)

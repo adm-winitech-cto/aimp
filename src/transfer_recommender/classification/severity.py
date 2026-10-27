@@ -2,7 +2,7 @@
 
 중증도 판정: 4대 중증이 아닌 환자의 적용 규칙을 Pre-KTAS 단계, 활력징후, 의식상태, 환자 상태 판단 결과로 정한다.
 활력징후 임계치와 정상 의식상태 목록은 config/transfer_rules.yaml에 있다.
-- 생리학적 중증: 임계치를 둔 활력징후 항목마다 기록 중 가장 나쁜 값이 임계치를 넘거나, 의식상태가 정상 목록에 없으면 중증이다.
+- 생리학적 중증: 임계치를 둔 활력징후 항목의 값이 임계치를 넘거나, 의식상태가 정상 목록에 없으면 중증이다.
   외상 환자와 비외상 환자는 임계치가 다르다.
 - 비외상 환자: Pre-KTAS 1~2단계이거나 생리학적 중증이면 비외상 중증, 아니면 비외상 경증이다.
 - 외상 환자: "다발성/중증손상" 지침(docs/severe-trauma-criteria.md)의 기준 중 하나라도 해당하면 중증외상, 아니면 경증외상이다.
@@ -18,7 +18,7 @@
 "활력징후 없음" 경고는 4대 중증 환자도 받아야 하므로 이 모듈이 아니라 pipeline.py가 추가한다.
 """
 
-from transfer_recommender.api.request import RecommendRequest
+from transfer_recommender.api.request import Patient
 from transfer_recommender.domain.patient import PatientAssessment
 from transfer_recommender.domain.types import INJURY_FINDINGS, INJURY_MECHANISMS, SPECIAL_SITUATIONS, PatientCategory
 from transfer_recommender.rules import RULES, VitalThreshold
@@ -33,27 +33,27 @@ RISKY_CHILD_AGE = 10  # 이 나이 이하이면 위험한 나이
 TRAUMA_CATEGORIES = frozenset({PatientCategory.SEVERE_TRAUMA, PatientCategory.MINOR_TRAUMA})
 
 
-def _physiological(req: RecommendRequest, thresholds: dict[str, VitalThreshold]) -> tuple[bool, bool]:
+def _physiological(patient: Patient, thresholds: dict[str, VitalThreshold]) -> tuple[bool, bool]:
     """(생리학적 중증 여부, 임계치를 둔 활력징후 항목의 측정값이 하나라도 있는지)."""
     measured = False
     vital_signs_severe = False
     for name, threshold in thresholds.items():
-        values = [value for value in (getattr(record, name) for record in req.vital_signs) if value is not None]
-        if values:
+        value = getattr(patient.vital_signs, name) if patient.vital_signs is not None else None
+        if value is not None:
             measured = True
-            vital_signs_severe = vital_signs_severe or threshold.is_severe(values)
-    return vital_signs_severe or req.consciousness_level not in RULES.normal_consciousness_levels, measured
+            vital_signs_severe = vital_signs_severe or threshold.is_severe([value])
+    return vital_signs_severe or patient.consciousness_level not in RULES.normal_consciousness_levels, measured
 
 
-def judge(req: RecommendRequest, assessment: PatientAssessment | None) -> PatientCategory:
-    pre_ktas_severe = req.pre_ktas.level <= SEVERE_PRE_KTAS_LEVEL
+def judge(patient: Patient, assessment: PatientAssessment | None) -> PatientCategory:
+    pre_ktas_severe = patient.pre_ktas.level <= SEVERE_PRE_KTAS_LEVEL
 
     if assessment is not None and not assessment.is_trauma:
-        physiological_severe, _ = _physiological(req, RULES.non_trauma_vital_signs)
+        physiological_severe, _ = _physiological(patient, RULES.non_trauma_vital_signs)
         severe = pre_ktas_severe or physiological_severe
         return PatientCategory.SEVERE_NON_TRAUMA if severe else PatientCategory.MINOR_NON_TRAUMA
 
-    physiological_severe, measured = _physiological(req, RULES.trauma_vital_signs)
+    physiological_severe, measured = _physiological(patient, RULES.trauma_vital_signs)
     if assessment is None:
         # 환자 상태 판단 결과가 없으면 외상으로 본다.
         severe = pre_ktas_severe or physiological_severe
@@ -66,7 +66,7 @@ def judge(req: RecommendRequest, assessment: PatientAssessment | None) -> Patien
 
 
 def special_situations(
-    req: RecommendRequest, category: PatientCategory, assessment: PatientAssessment | None
+    patient: Patient, category: PatientCategory, assessment: PatientAssessment | None
 ) -> tuple[str, ...]:
     """특수상황 항목. 적용 규칙이 중증외상이나 경증외상이 아니면 빈 튜플이다.
 
@@ -74,7 +74,7 @@ def special_situations(
     """
     if category not in TRAUMA_CATEGORIES:
         return ()
-    age = req.patient_info.age
+    age = patient.info.age
     items: list[str] = [RISKY_AGE] if age >= RISKY_ADULT_AGE or age <= RISKY_CHILD_AGE else []
     if assessment is not None:
         items += [criterion for criterion in assessment.trauma_criteria if criterion in SPECIAL_SITUATIONS]

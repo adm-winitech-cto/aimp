@@ -9,57 +9,71 @@ from transfer_recommender.api.routes import RECOMMEND_PATH
 from transfer_recommender.main import MAX_LOGGED_BODY_BYTES
 
 REQUIRED_KEYS = [
-    ("patientInfo",),
-    ("patientInfo", "age"),
-    ("consciousnessLevel",),
-    ("preKtas",),
-    ("preKtas", "level"),
-    ("preKtas", "assessmentDetail"),
-    ("vitalSigns", 0, "recordedAt"),
-    ("medicalHistory", 0, "diseaseName"),
-    ("specialPatientInfo",),
-    ("specialPatientInfo", "pregnancyInfo"),
-    ("specialPatientInfo", "newbornInfo"),
-    ("patientLocation",),
-    ("patientLocation", "longitude"),
-    ("patientLocation", "latitude"),
+    ("incidentId",),
+    ("requestSeq",),
+    ("requestedAt",),
+    ("patient",),
+    ("patient", "info"),
+    ("patient", "info", "age"),
+    ("patient", "consciousnessLevel"),
+    ("patient", "preKtas"),
+    ("patient", "preKtas", "level"),
+    ("patient", "preKtas", "assessmentDetail"),
+    ("patient", "vitalSigns", "recordedAt"),
+    ("patient", "medicalHistory", 0, "diseaseName"),
+    ("patient", "specialInfo"),
+    ("patient", "specialInfo", "pregnancyInfo"),
+    ("patient", "specialInfo", "newbornInfo"),
+    ("patient", "location"),
+    ("patient", "location", "longitude"),
+    ("patient", "location", "latitude"),
+    ("rejectedHospitals", 0, "hospitalName"),
+    ("rejectedHospitals", 0, "rejectedAt"),
 ]
 
 NON_NULLABLE = [
     # 필수 필드
-    ("patientInfo",),
-    ("patientInfo", "age"),
-    ("consciousnessLevel",),
-    ("preKtas",),
-    ("preKtas", "level"),
-    ("preKtas", "assessmentDetail"),
-    ("vitalSigns", 0, "recordedAt"),
-    ("medicalHistory", 0, "diseaseName"),
-    ("specialPatientInfo",),
-    ("patientLocation",),
-    ("patientLocation", "longitude"),
-    ("patientLocation", "latitude"),
+    ("incidentId",),
+    ("requestSeq",),
+    ("requestedAt",),
+    ("patient",),
+    ("patient", "info"),
+    ("patient", "info", "age"),
+    ("patient", "consciousnessLevel"),
+    ("patient", "preKtas"),
+    ("patient", "preKtas", "level"),
+    ("patient", "preKtas", "assessmentDetail"),
+    ("patient", "vitalSigns", "recordedAt"),
+    ("patient", "medicalHistory", 0, "diseaseName"),
+    ("patient", "specialInfo"),
+    ("patient", "location"),
+    ("patient", "location", "longitude"),
+    ("patient", "location", "latitude"),
+    ("rejectedHospitals", 0, "hospitalName"),
+    ("rejectedHospitals", 0, "rejectedAt"),
     # optional이지만 '생략 시 처리'가 null이 아닌 필드
-    ("symptoms",),
-    ("vitalSigns",),
-    ("medicalHistory",),
-    ("medications",),
-    ("preKtas", "assessmentRound"),
+    ("patient", "symptoms"),
+    ("patient", "medicalHistory"),
+    ("patient", "medications"),
+    ("patient", "preKtas", "assessmentRound"),
+    ("rejectedHospitals",),
 ]
 
 NULLABLE = [
-    ("patientInfo", "sex"),
-    ("patientInfo", "patientType"),
-    ("chiefComplaint",),
-    ("majorSevereType",),
-    ("vitalSigns", 0, "measuredAt"),
-    ("vitalSigns", 0, "systolicBpMmHg"),
-    ("vitalSigns", 0, "spo2Percent"),
-    ("medicalHistory", 0, "detail"),
-    ("specialPatientInfo", "pregnancyInfo"),
-    ("specialPatientInfo", "newbornInfo"),
-    ("remark",),
-    ("requestCnt",),
+    ("recommendCount",),
+    ("patient", "info", "sex"),
+    ("patient", "info", "patientType"),
+    ("patient", "chiefComplaint"),
+    ("patient", "majorSevereType"),
+    ("patient", "vitalSigns"),
+    ("patient", "vitalSigns", "measuredAt"),
+    ("patient", "vitalSigns", "systolicBpMmHg"),
+    ("patient", "vitalSigns", "spo2Percent"),
+    ("patient", "medicalHistory", 0, "detail"),
+    ("patient", "specialInfo", "pregnancyInfo"),
+    ("patient", "specialInfo", "newbornInfo"),
+    ("patient", "remark"),
+    ("rejectedHospitals", 0, "reason"),
 ]
 
 
@@ -125,16 +139,16 @@ def test_null_on_nullable_field_passes_validation(client, example_request, path)
         1788167486,
     ],
 )
-def test_invalid_recorded_at_returns_400(client, example_request, value):
+def test_invalid_recorded_at_returns_400(client, example_request, example_patient, value):
     """recordedAt이 yyyy-MM-dd HH:mm:ss 형식의 문자열이 아니면 400을 반환하는지 확인한다."""
-    example_request["vitalSigns"][0]["recordedAt"] = value
+    example_patient["vitalSigns"]["recordedAt"] = value
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 
 
-def test_invalid_timestamp_message_does_not_echo_input(client, example_request):
+def test_invalid_timestamp_message_does_not_echo_input(client, example_request, example_patient):
     """시각 형식 오류의 400 응답 메시지에 입력값이 들어가지 않는지 확인한다."""
-    example_request["vitalSigns"][0]["measuredAt"] = "MARKER-환자정보"
+    example_patient["vitalSigns"]["measuredAt"] = "MARKER-환자정보"
 
     response = client.post(RECOMMEND_PATH, json=example_request)
 
@@ -143,9 +157,9 @@ def test_invalid_timestamp_message_does_not_echo_input(client, example_request):
 
 
 @pytest.mark.parametrize("level", [0, 6])
-def test_pre_ktas_level_out_of_range_returns_400(client, example_request, level):
+def test_pre_ktas_level_out_of_range_returns_400(client, example_request, example_patient, level):
     """Pre-KTAS 단계가 1~5 범위를 벗어나면 400을 반환하는지 확인한다."""
-    example_request["preKtas"]["level"] = level
+    example_patient["preKtas"]["level"] = level
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 
@@ -153,12 +167,14 @@ def test_pre_ktas_level_out_of_range_returns_400(client, example_request, level)
 @pytest.mark.parametrize(
     ("path", "value"),
     [
-        (("patientInfo", "age"), True),
-        (("patientInfo", "age"), "65"),
-        (("preKtas", "level"), True),
-        (("vitalSigns", 0, "spo2Percent"), "97"),
-        (("requestCnt",), True),
-        (("requestCnt",), "2"),
+        (("patient", "info", "age"), True),
+        (("patient", "info", "age"), "65"),
+        (("patient", "preKtas", "level"), True),
+        (("patient", "vitalSigns", "spo2Percent"), "97"),
+        (("requestSeq",), True),
+        (("requestSeq",), "2"),
+        (("recommendCount",), True),
+        (("recommendCount",), "2"),
     ],
     ids=lambda v: _path_id(v) if isinstance(v, tuple) else repr(v),
 )
@@ -169,25 +185,26 @@ def test_non_number_on_number_field_returns_400(client, example_request, path, v
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 
 
+@pytest.mark.parametrize("key", ["requestSeq", "recommendCount"])
 @pytest.mark.parametrize("value", [0, -1])
-def test_request_cnt_below_1_returns_400(client, example_request, value):
-    """추천받을 병원 수(requestCnt)가 1보다 작으면 400을 반환하는지 확인한다."""
-    example_request["requestCnt"] = value
+def test_count_below_1_returns_400(client, example_request, key, value):
+    """요청 차수(requestSeq)나 추천받을 병원 수(recommendCount)가 1보다 작으면 400을 반환하는지 확인한다."""
+    example_request[key] = value
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 
 
 def test_fraction_on_integer_field_returns_400(client, example_request):
-    """정수 필드(requestCnt)에 소수가 오면 정수로 바꾸지 않고 400을 반환하는지 확인한다."""
-    example_request["requestCnt"] = 1.5
+    """정수 필드(recommendCount)에 소수가 오면 정수로 바꾸지 않고 400을 반환하는지 확인한다."""
+    example_request["recommendCount"] = 1.5
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 400
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")], ids=repr)
-def test_non_finite_number_returns_400(client, example_request, value):
+def test_non_finite_number_returns_400(client, example_request, example_patient, value):
     """숫자 필드에 NaN, Infinity, -Infinity가 오면 400을 반환하는지 확인한다."""
-    example_request["vitalSigns"][0]["spo2Percent"] = value
+    example_patient["vitalSigns"]["spo2Percent"] = value
 
     # json.dumps는 NaN, Infinity를 JSON 표준 밖의 토큰 그대로 쓴다. 클라이언트가 이런 본문을 보내는 경우를 흉내 낸다.
     response = client.post(RECOMMEND_PATH, content=json.dumps(example_request), headers={"Content-Type": "application/json"})
@@ -196,32 +213,32 @@ def test_non_finite_number_returns_400(client, example_request, value):
 
 
 @pytest.mark.parametrize("value", ["심정지", "중증외상", "뇌졸중", "심근경색"])
-def test_major_severe_type_values_pass_validation(client, example_request, value):
+def test_major_severe_type_values_pass_validation(client, example_request, example_patient, value):
     """majorSevereType에 4대 중증 4종이 오면 요청 검증을 통과하는지 확인한다."""
-    example_request["majorSevereType"] = value
+    example_patient["majorSevereType"] = value
 
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 501
 
 
 @pytest.mark.parametrize("value", ["없음", "심정지 ", ""])
-def test_unknown_major_severe_type_returns_400(client, example_request, value):
+def test_unknown_major_severe_type_returns_400(client, example_request, example_patient, value):
     """majorSevereType에 4대 중증 4종이 아닌 값(공백이 붙은 값 포함)이 오면 무시하지 않고 400을 반환하는지 확인한다."""
-    example_request["majorSevereType"] = value
+    example_patient["majorSevereType"] = value
 
     response = client.post(RECOMMEND_PATH, json=example_request)
 
     assert response.status_code == 400
-    assert response.json()["detail"][0]["loc"] == ["body", "majorSevereType"]
+    assert response.json()["detail"][0]["loc"] == ["body", "patient", "majorSevereType"]
 
 
-def test_unknown_key_returns_400(client, example_request):
+def test_unknown_key_returns_400(client, example_request, example_patient):
     """명세에 없는 키(예: camelCase가 아닌 vital_signs)가 오면 기본값으로 넘어가지 않고 400을 반환하는지 확인한다."""
-    example_request["vital_signs"] = example_request.pop("vitalSigns")
+    example_patient["vital_signs"] = example_patient.pop("vitalSigns")
 
     response = client.post(RECOMMEND_PATH, json=example_request)
 
     assert response.status_code == 400
-    assert {"loc": ["body", "vital_signs"], "msg": "Extra inputs are not permitted", "type": "extra_forbidden"} in response.json()["detail"]
+    assert {"loc": ["body", "patient", "vital_signs"], "msg": "Extra inputs are not permitted", "type": "extra_forbidden"} in response.json()["detail"]
 
 
 def test_deeply_nested_body_returns_400(client):
@@ -233,12 +250,12 @@ def test_deeply_nested_body_returns_400(client):
 
 def test_400_response_does_not_echo_request_body(client, example_request):
     """400 응답이 요청 본문(input)을 되돌려 주지 않고 loc, msg, type만 담는지 확인한다."""
-    del example_request["specialPatientInfo"]
+    del example_request["patient"]["specialInfo"]
 
     response = client.post(RECOMMEND_PATH, json=example_request)
 
     assert response.json() == {
-        "detail": [{"loc": ["body", "specialPatientInfo"], "msg": "Field required", "type": "missing"}]
+        "detail": [{"loc": ["body", "patient", "specialInfo"], "msg": "Field required", "type": "missing"}]
     }
 
 
@@ -270,13 +287,13 @@ def test_large_request_body_is_truncated_in_log(client, caplog):
 
 def test_invalid_request_body_is_logged_with_errors(client, example_request, caplog):
     """요청 검증에 실패한 요청도 본문과 검증 실패 내용(오류 위치, 종류)을 함께 로그에 남기는지 확인한다."""
-    del example_request["specialPatientInfo"]
+    del example_request["patient"]["specialInfo"]
 
     with caplog.at_level(logging.INFO, logger="transfer_recommender.main"):
         client.post(RECOMMEND_PATH, json=example_request)
 
     assert "자유서술" in caplog.text
-    assert "errors=body.specialPatientInfo:missing" in caplog.text
+    assert "errors=body.patient.specialInfo:missing" in caplog.text
 
 
 def test_request_without_body_logs_no_body(client, caplog):
