@@ -18,7 +18,6 @@ import re
 import sys
 from pathlib import Path
 
-# TOFIX: agent 레포 루트에 CHANGELOG.md를 새로 만들어야 한다. 지금 agent 저장소에는 CHANGELOG.md가 없어 main()이 "CHANGELOG.md 가 없습니다"를 출력하고 1로 끝난다.
 CHANGELOG = Path("CHANGELOG.md")
 UNRELEASED = "Unreleased"
 
@@ -30,12 +29,11 @@ SUBSECTION_RE = re.compile(r"^###\s+(.+?)\s*$")
 LINK_RE = re.compile(r"^\[([^\]]+)\]:\s+\S+")
 ENTRY_PREFIX = "- "
 
-# TOFIX: 34 §7 '면제와 no-changelog'에 맞춰 CLAUDE.md, pyproject.toml, requirements-dev.txt, scripts/, eval/, eval_set/ 패턴을 더하고, `^tests?/`를 `(^|/)tests?/`로 바꿔 service/(폴더 이름 미정)/ 아래의 tests/도 면제한다.
 # CHANGELOG 항목이 필요 없는 변경. 쓰는 사람이 보는 동작이 그대로인 것들이다 (정책 §7).
 EXEMPT_PATTERNS = (
     re.compile(r"^docs/"),
     re.compile(r"^\.github/ISSUE_TEMPLATE/"),
-    re.compile(r"^tests?/"),
+    re.compile(r"(^|/)tests?/"),
     re.compile(r"(^|/)test_[^/]+\.py$"),
     re.compile(r"_test\.py$"),
     re.compile(r"\.test\.tsx?$"),
@@ -44,6 +42,12 @@ EXEMPT_PATTERNS = (
     re.compile(r"^\.gitignore$"),
     re.compile(r"^LICENSE$"),
     re.compile(r"(^|/)README\.md$"),
+    re.compile(r"^CLAUDE\.md$"),
+    re.compile(r"^pyproject\.toml$"),
+    re.compile(r"^requirements-dev\.txt$"),
+    re.compile(r"^scripts/"),
+    re.compile(r"^eval/"),
+    re.compile(r"^eval_set/"),
 )
 
 
