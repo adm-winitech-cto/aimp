@@ -181,3 +181,11 @@ cython_debug/
 
 # OS generated files
 .DS_Store
+
+# 평가셋: eval_set/에는 이름에 synthetic이 들어간 합성 평가셋만 커밋한다 (31 §5.2, PRD F-12)
+eval_set/**
+!eval_set/**/
+!eval_set/**/*synthetic*
+
+# 평가 리포트: eval/reports/에 두고 커밋하지 않는다 (31 §5.2, PRD F-12)
+eval/reports/

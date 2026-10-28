@@ -1,4 +1,4 @@
-"""중증·특수 자원 판단(A0). design.md '판정 규칙' 표대로 입력 필드 값만 보고 판단한다."""
+"""중증·특수 자원 판단(A0). PRD_v0.1.md F-02 '중증·특수 자원 판단'의 판정 규칙 표대로 입력 필드 값만 보고 판단한다."""
 
 from transfer_recommender.api.request import Patient
 from transfer_recommender.domain.patient import SevereJudgment
@@ -8,7 +8,8 @@ PEDIATRIC_AGE_LIMIT = 15  # 이 나이 미만이면 소아 응급 진료 자원�
 
 # 4대 중증 구분 → (적용 규칙, 특수 자원)
 _SEVERE_TYPE_RULES: dict[SevereType, tuple[PatientCategory, frozenset[Resource]]] = {
-    # 심정지 환자에게 특수 자원이 없다는 판정은 design.md에서 잠정이다.
+    # 이송지침은 심정지 환자를 병원 규모(등급) 조건을 만족하는 병원 중 가장 가까운 병원으로 이송하도록 정하므로,
+    # 심정지 환자에게는 특수 자원이 없다(PRD_v0.1.md F-02 '중증·특수 자원 판단'의 판정 규칙 표).
     SevereType.CARDIAC_ARREST: (PatientCategory.CARDIAC_ARREST, frozenset()),
     SevereType.SEVERE_TRAUMA: (PatientCategory.SEVERE_TRAUMA, frozenset()),
     # 뇌졸중 선별검사 결과를 받을 경로가 없으므로 '뇌졸중 의증' 규칙을 적용한다.
