@@ -13,7 +13,7 @@ class SevereType(StrEnum):
 
 
 class PatientCategory(StrEnum):
-    """적용 규칙. design.md '119 이송지침 규칙 엔진'의 환자 분류."""
+    """적용 규칙. PRD_v0.1.md F-05 '119 이송지침 규칙 엔진'의 환자 분류."""
 
     SEVERE_TRAUMA = "중증외상"
     MINOR_TRAUMA = "경증외상"
@@ -32,7 +32,7 @@ class Level(StrEnum):
 
 
 class Resource(StrEnum):
-    """환자에게 필요한 특수 자원. design.md '판정 규칙' 표."""
+    """환자에게 필요한 특수 자원. PRD_v0.1.md F-02 '중증·특수 자원 판단'의 판정 규칙 표."""
 
     STROKE_TREATMENT = "뇌경색 재관류중재술 또는 뇌출혈수술"
     MI_REPERFUSION = "심근경색 재관류중재술"
