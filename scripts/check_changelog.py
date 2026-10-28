@@ -30,6 +30,7 @@ SUBSECTION_RE = re.compile(r"^###\s+(.+?)\s*$")
 LINK_RE = re.compile(r"^\[([^\]]+)\]:\s+\S+")
 ENTRY_PREFIX = "- "
 
+# TOFIX: 34 §7 '면제와 no-changelog'에 맞춰 CLAUDE.md, pyproject.toml, requirements-dev.txt, scripts/, eval/, eval_set/ 패턴을 더하고, `^tests?/`를 `(^|/)tests?/`로 바꿔 service/(폴더 이름 미정)/ 아래의 tests/도 면제한다.
 # CHANGELOG 항목이 필요 없는 변경. 쓰는 사람이 보는 동작이 그대로인 것들이다 (정책 §7).
 EXEMPT_PATTERNS = (
     re.compile(r"^docs/"),
