@@ -1,6 +1,6 @@
 """병원 데이터. 병원 데이터 조회(C0)의 출력.
 
-클래스 docstring의 'DB' 항목은 docs/erd_hospital.mmd 기준으로 값을 가져올 테이블과 컬럼이다.
+클래스 docstring의 'DB' 항목은 docs/10_설계/erd_hospital.mmd 기준으로 값을 가져올 테이블과 컬럼이다.
 """
 
 from dataclasses import dataclass

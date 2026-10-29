@@ -33,7 +33,7 @@ levels:
 # 중증도 판정의 활력징후 임계치
 # - 항목마다 low(기록 중 가장 낮은 값이 이 값보다 작으면 중증)와 high(가장 높은 값이 이 값보다 크면 중증)를 적는다.
 #   둘 다 생략할 수 있다.
-# - 외상 환자: "다발성/중증손상" 지침(docs/severe-trauma-criteria.md)의 생리학적 기준
+# - 외상 환자: "다발성/중증손상" 지침(docs/90_domain/severe-trauma-criteria.md)의 생리학적 기준
 trauma_vital_signs:
   systolic_bp_mm_hg:  # 수축기혈압
     low: 90

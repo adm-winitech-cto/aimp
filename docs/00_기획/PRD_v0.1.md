@@ -1,7 +1,7 @@
 # PRD — 응급환자 이송 병원 추천 시스템
 
 > 버전 v0.1 · 작성일 2026-10-28
-> 근거: 이 문서는 2026-10-20 설계 초안과 구현 계획(일감 상태는 2026-10-22 기준)을 합쳐 만들었다. 요청·응답 형식은 [interface.md](interface.md), 중증외상 판정 기준은 [severe-trauma-criteria.md](severe-trauma-criteria.md), 병원 데이터 구조는 [erd_hospital.mmd](erd_hospital.mmd)를 따른다.
+> 근거: 이 문서는 2026-10-20 설계 초안과 구현 계획(일감 상태는 2026-10-22 기준)을 합쳐 만들었다. 요청·응답 형식은 [interface.md](../10_설계/interface.md), 중증외상 판정 기준은 [severe-trauma-criteria.md](../90_domain/severe-trauma-criteria.md), 병원 데이터 구조는 [erd_hospital.mmd](../10_설계/erd_hospital.mmd)를 따른다.
 
 ---
 
@@ -76,7 +76,7 @@
 |---|---|---|
 | 외부 시스템 | 병원선정서비스 | 병원선정서비스는 환자 정보, 환자 위치, 비고를 담아 시스템에 병원 추천을 요청하고, 시스템이 반환한 추천 결과를 받는다. 병원선정서비스는 입력 필드를 바꾸지 않는다 |
 | 사람 | 구급대원, 지도의사 | 구급대원과 지도의사는 추천 결과를 참고해 최종 이송 병원을 결정한다. 응답에 "직접의료지도 필요" 표시가 있는 환자는 지도의사가 직접의료지도로 이송병원을 정하고, 이때 지도의사는 추천 목록을 참고할 수 있다 |
-| 외부 시스템 | 병원 데이터(Postgres) | 병원 데이터 DB는 병원 기본 정보와 실시간 데이터(가용병상, 중증질환 수용가능 여부, 진료불가 메시지)를 제공한다. 시스템이 읽는 테이블은 [erd_hospital.mmd](erd_hospital.mmd)의 `tapi_*` 테이블이다 |
+| 외부 시스템 | 병원 데이터(Postgres) | 병원 데이터 DB는 병원 기본 정보와 실시간 데이터(가용병상, 중증질환 수용가능 여부, 진료불가 메시지)를 제공한다. 시스템이 읽는 테이블은 [erd_hospital.mmd](../10_설계/erd_hospital.mmd)의 `tapi_*` 테이블이다 |
 | 사람 | 개발팀 | 개발팀은 지침이 개정되면 규칙 설정 파일을 고친다. 개발팀은 프롬프트를 바꾸면 평가셋으로 결과를 확인한 뒤 배포한다 |
 
 ---
@@ -283,7 +283,7 @@ compose.yaml                          # 앱, vLLM
 
 **요구사항**
 
-- 병원선정서비스는 환자 정보와 환자 위치를 담아 시스템에 병원 추천을 요청한다. 요청의 형식(필드명, 타입, 필수 여부)은 [interface.md](interface.md)의 '병원 추천 요청' 섹션이 정한다.
+- 병원선정서비스는 환자 정보와 환자 위치를 담아 시스템에 병원 추천을 요청한다. 요청의 형식(필드명, 타입, 필수 여부)은 [interface.md](../10_설계/interface.md)의 '병원 추천 요청' 섹션이 정한다.
 - 시스템은 interface.md의 '필수 여부 규칙'대로 요청을 검증한다.
     - 필수 필드의 키가 없거나 `null`을 허용하지 않는 필드의 값이 `null`이면, 시스템은 400을 반환한다. FastAPI는 요청 검증 오류에 기본으로 422를 반환하므로, `main.py`는 검증 오류 처리기를 등록해 400을 반환한다.
     - 시스템은 타입에 `null`이 있거나 '생략 시 처리' 값이 `null`인 필드에만 `null`을 받는다. '생략 시 처리' 값이 `[]`나 `1`인 optional 필드(`symptoms`, `vitalSigns`, `medicalHistory`, `medications`, `preKtas.assessmentRound`)에 `null`이 오면, 시스템은 400을 반환한다.
@@ -378,7 +378,7 @@ compose.yaml                          # 앱, vLLM
 - 값 제한: 시스템은 vLLM structured outputs(JSON 스키마)로 LLM이 진료과, 중증응급질환 코드, 중증외상 기준 항목을 정해진 값 목록 안에서만 고르게 한다.
     - 진료과 목록은 병원 데이터의 진료과목(`qd`)과 같은 이름을 써야 한다. 그래야 후보 필터가 두 값을 비교할 수 있다. 값 목록이 정해지기 전까지 개발팀은 임시 진료과 목록을 쓴다([§9 결정 필요](#9-결정-필요)의 '진료과 값 목록').
     - 중증응급질환 코드는 중증질환환자수용가능정보조회의 `mkioskty1`~`mkioskty27`이다.
-    - 중증외상 기준 항목은 [severe-trauma-criteria.md](severe-trauma-criteria.md)의 신체검사 소견, 손상기전, 특수상황 항목이다.
+    - 중증외상 기준 항목은 [severe-trauma-criteria.md](../90_domain/severe-trauma-criteria.md)의 신체검사 소견, 손상기전, 특수상황 항목이다.
 - 개발팀은 출력 스키마를 `domain/patient.py`의 환자 상태 판단 결과 Pydantic 모델 하나에서만 만든다. 중증도 판정과 후보 필터도 이 모델을 결과 타입으로 받는다.
 - 시스템 프롬프트의 지시문: LLM은 Pre-KTAS 평가내용, 주호소, 증상, 비고에 적힌 내용에 해당하는 항목만 고른다. LLM은 적혀 있지 않은 손상기전이나 소견을 추측해 고르지 않는다.
 - `patient_assessment.py`는 [N-01 프롬프트 관리](#n-01-프롬프트-관리)에 적은 방식으로 system·user 메시지를 만들고 `LlmClient`를 호출한다.
@@ -406,7 +406,7 @@ compose.yaml                          # 앱, vLLM
 **요구사항**
 
 - 4대 중증이 아닌 환자(중증·특수 자원 판단(A0)에서 `severe_type` 값이 없는 환자)만 중증도 판정을 거친다. `pipeline.py`는 이 환자에게만 `severity.judge`를 호출한다.
-- 외상 환자: 시스템은 "다발성/중증손상" 지침([severe-trauma-criteria.md](severe-trauma-criteria.md))의 기준 중 하나라도 해당하면 환자를 중증외상으로 판정한다([§9 결정 필요](#9-결정-필요)의 '중증외상 판정 기준').
+- 외상 환자: 시스템은 "다발성/중증손상" 지침([severe-trauma-criteria.md](../90_domain/severe-trauma-criteria.md))의 기준 중 하나라도 해당하면 환자를 중증외상으로 판정한다([§9 결정 필요](#9-결정-필요)의 '중증외상 판정 기준').
     - 생리학적 기준: 시스템은 활력징후와 의식상태로 판정한다. 기준은 의식상태 V(언어 반응) 이하, 수축기혈압 90mmHg 미만, 호흡수 분당 10회 미만 또는 29회 초과다.
         - 시스템은 `consciousnessLevel` 값이 `명료`가 아니면 의식상태를 V 이하로 간주한다.
         - 요청에 GCS(글라스고우 혼수척도)가 없으므로, 시스템은 GCS 기준을 쓰지 않는다.
@@ -496,7 +496,7 @@ compose.yaml                          # 앱, vLLM
     - 개발팀은 예시 환자 위치(경도 128.5911, 위도 35.8714) 주변 병원 15곳 정도를 넣는다.
     - 개발팀은 후보 필터의 조건마다 그 조건으로 제거되는 병원을 1곳 이상 넣는다.
     - 개발팀은 다른 시·도의 권역외상센터와 병상 데이터가 오래된 병원을 넣는다.
-- Postgres 구현(`hospitals/postgres.py`)은 [erd_hospital.mmd](erd_hospital.mmd)의 `tapi_*` 테이블을 조회해 `Hospital`로 바꾼다.
+- Postgres 구현(`hospitals/postgres.py`)은 [erd_hospital.mmd](../10_설계/erd_hospital.mmd)의 `tapi_*` 테이블을 조회해 `Hospital`로 바꾼다.
     - 응급의료기관 등급: 응급의료기관목록정보조회 `dutyemcls`
     - 권역외상센터 지정: 외상센터위치정보조회 `dutylvkl`
     - 진료과목: 응급의료기관목록정보조회 `qd`. `postgres.py`는 `qd` 값을 진료과 열거형으로 바꾼다.

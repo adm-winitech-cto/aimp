@@ -146,7 +146,7 @@ SEVERE_DISEASE_NAMES: dict[SevereDiseaseCode, str] = {
 }
 
 
-# "다발성/중증손상" 지침(docs/severe-trauma-criteria.md)의 중증외상 기준 항목 중 환자 상태 판단(A1) LLM이 고르는 항목이다.
+# "다발성/중증손상" 지침(docs/90_domain/severe-trauma-criteria.md)의 중증외상 기준 항목 중 환자 상태 판단(A1) LLM이 고르는 항목이다.
 # 값은 지침 문구를 따른다. 생리학적 기준은 중증도 판정(A2)이 활력징후와 의식상태로 판정하고,
 # 특수상황의 위험한 나이는 나이로 판정하므로 넣지 않았다.
 class TraumaCriterion(StrEnum):
