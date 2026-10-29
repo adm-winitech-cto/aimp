@@ -58,9 +58,10 @@ class HospitalCategory(StrEnum):
 # docstring이 JSON 스키마의 description이 되어 프롬프트에 들어가므로, 개발자용 설명은 주석에 적는다.
 
 
-# 병원 데이터 진료과목(`qd`)의 값 목록을 받기 전까지 쓰는 임시 목록이다. 값은 `qd` 값과 같은 이름이어야 후보 필터가 비교할 수 있다.
-# 의료법 표준 진료과목 중 응급 진료에서 필수·보조 진료과가 될 수 있는 과만 넣었다.
-# 응급의학과는 모든 응급실에 있어 조건으로 의미가 없고, 진단·지원 과(영상의학과 등)는 진료과 조건이 되지 않으므로 뺐다.
+# 「전문의의 수련 및 자격 인정 등에 관한 규정」 제3조가 정한 전문의 전문과목 26개다(2022-11-22 개정 기준). 순서도 조문을 따른다.
+# 값은 병원정보 검색 API `/specialties`의 진료과목 명칭과 같아야 후보 필터가 병원의 진료과목(Hospital.departments)과 비교할 수 있다.
+# 그래서 조문과 표기가 다른 두 과는 API 명칭을 쓴다. 조문의 "핵의학"은 "핵의학과", "직업환경의학과"는 "작업환경의학과"다.
+# API에는 옛 과목명(산업의학과, 치료방사선과, 해부병리과)도 있지만, 지금 전문과목이 아니므로 넣지 않았다.
 class Department(StrEnum):
     """진료과."""
 
@@ -72,12 +73,24 @@ class Department(StrEnum):
     NEUROSURGERY = "신경외과"
     CARDIOTHORACIC_SURGERY = "심장혈관흉부외과"
     PLASTIC_SURGERY = "성형외과"
+    ANESTHESIOLOGY = "마취통증의학과"
     OBSTETRICS_GYNECOLOGY = "산부인과"
     PEDIATRICS = "소아청소년과"
     OPHTHALMOLOGY = "안과"
     OTOLARYNGOLOGY = "이비인후과"
     DERMATOLOGY = "피부과"
     UROLOGY = "비뇨의학과"
+    RADIOLOGY = "영상의학과"
+    RADIATION_ONCOLOGY = "방사선종양학과"
+    PATHOLOGY = "병리과"
+    LABORATORY_MEDICINE = "진단검사의학과"
+    TUBERCULOSIS = "결핵과"
+    REHABILITATION_MEDICINE = "재활의학과"
+    PREVENTIVE_MEDICINE = "예방의학과"
+    FAMILY_MEDICINE = "가정의학과"
+    EMERGENCY_MEDICINE = "응급의학과"
+    NUCLEAR_MEDICINE = "핵의학과"
+    OCCUPATIONAL_ENVIRONMENTAL_MEDICINE = "작업환경의학과"
 
 
 # 중증질환환자수용가능정보조회(tapi_svredss_ptn_actc_psblty_info_inq)의 질환 항목 컬럼명이다.
