@@ -14,3 +14,9 @@ prompt_version: final_selection_v1  # 최종 선정 (selection/prompts/)
 # vLLM 서버 주소
 vllm_url: http://localhost:8099
 vllm_model: Qwen/Qwen3.8-Flash-Next-FP8
+
+# 병원정보 검색 API (docs/10_설계/interface_hospital_api.md). 인증 키는 환경 변수 HOSPITAL_API_CLIENT_ID, HOSPITAL_API_KEY에 둔다
+hospital_api_url: http://192.168.1.196:8080/aiemd/api/v1/integration/hospitals  # 개발서버. 운영 서버 주소는 안내받지 않았다
+hospital_api_timeout_seconds: 2.0  # 요청 한 번의 제한 시간 (임시값)
+hospital_api_max_concurrency: 8  # 병원 상세를 동시에 호출하는 수 (임시값)
+hospital_search_radius_km: 50.0  # 환자 위치에서 이 반경 안의 병원만 조회한다. API 최대값은 100 (임시값)
