@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
-from transfer_recommender.llm_client import ChatMessage, LlmFailure, LlmOutput
+from aimp.ports.llm import ChatMessage, LlmFailure, LlmOutput
 
 
 @dataclass(frozen=True)

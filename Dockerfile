@@ -13,4 +13,4 @@ RUN useradd --system app
 USER app
 
 EXPOSE 8091
-CMD ["uvicorn", "transfer_recommender.main:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8091"]
+CMD ["uvicorn", "aimp.main:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8091"]

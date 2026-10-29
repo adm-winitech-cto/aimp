@@ -49,6 +49,10 @@
 - **추천 병원 수 N의 기본값은 10개다**: 요청의 `recommendCount`가 없을 때 쓴다(2026-10-28 결정).
 
 ### Changed
+- **앱 패키지 이름이 `aimp`로 바뀌고 모듈을 PRD §4 코드 구조로 옮겼다**: 패키지 `transfer_recommender`를
+  `src/aimp/`로 옮기고, 설정 읽기·로깅은 `common/`, 규칙 엔진은 `engines/`, LLM 호출 인터페이스와 병원
+  조회 인터페이스는 `ports/`, vLLM 구현은 `adapters/`로 나눴다. 동작은 바뀌지 않았다. 앱 진입점이
+  `aimp.main:app`으로 바뀌었으므로 운영 현장에서는 앱 이미지를 다시 빌드해야 한다.
 - **추천 응답의 `hospitalId`가 응급의료기관 기관ID(hpid)로 바뀐다**: 정적 병원 목록
   (`selection/static_hospitals.py`)의 병원 ID를 8자리 숫자 코드에서 hpid(예: `A2100040`)로 바꿨다.
   hpid가 없는 임신분만 병원 2곳은 병원 ID를 비워 두고 프롬프트 병원 목록과 LLM 출력의 병원 ID 값
