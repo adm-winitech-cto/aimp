@@ -95,18 +95,6 @@ class DiseaseAcceptance:
     restriction: str | None
 
 
-@dataclass(frozen=True)
-class BlockMessage:
-    """병원이 공개한 진료불가 메시지. 조회 시점에 유효한 메시지만 담는다.
-
-    API: 병원 상세 statusMessages, publicStatusMessages로 보이지만, 개발서버에서 값이 모두 비어 있어 원소 구조를
-        확인하지 못했다. 원소 구조를 확인하기 전까지 운영 구현은 이 값을 채우지 않는다.
-    """
-
-    disease_code: str | None  # 특정 중증질환에 대한 메시지면 질환 코드, 응급실 전체에 대한 메시지면 None
-    text: str
-
-
 # 병상 dict 필드가 있어서 frozen으로 두지 않는다. frozen이면 해시할 수 있는 것처럼 보이지만 해시하면 오류가 난다.
 @dataclass
 class Hospital:
@@ -134,7 +122,8 @@ class Hospital:
         equipment: 병원 상세 availableEquipment[]의 available. value가 Y면 True, N이나 N1이면 False다.
             종류별 key는 Equipment 참고
         delivery_room: 병원 상세 availableFacilities[]의 hv42(분만실)의 available
-        block_messages: BlockMessage 참고
+        block_messages: 병원 상세 statusMessages, publicStatusMessages. 병원이 등록한 메시지 중 조회 시점에 활성화된
+            것을 모두 담는다. 원소는 정해진 구조 없는 자연어 문장이라서 진료과나 중증질환 코드를 필드로 읽을 수 없다
     """
 
     hospital_id: str
@@ -155,4 +144,4 @@ class Hospital:
     disease_acceptance: dict[str, DiseaseAcceptance]  # 중증질환 코드별 수용가능 여부
     equipment: dict[Equipment, bool | None]  # 장비 가용 여부
     delivery_room: bool | None  # 분만실 가용 여부
-    block_messages: tuple[BlockMessage, ...]
+    block_messages: tuple[str, ...]  # 진료불가 메시지 문장. 두 필드에 같은 문장이 있으면 한 번만 담는다
