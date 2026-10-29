@@ -279,7 +279,7 @@ return Recommendation(...)                                # api/가 응답 JSON�
 | Tmap ETA API | 선정된 병원 N개의 도착 예정 시간 제공 | 에어갭 현장에서 예외적으로 호출 가능 |
 | ML 모델 | 과거의 유사한 사례에 추천한 병원 후보 제공 | 에어갭 현장망 안에 있는지 확인 필요 |
 
-- 개발팀은 `compose.yaml`에 앱과 vLLM을 정의한다.
+- 개발팀은 `compose.yaml`에 앱만 정의한다. vLLM은 앱과 따로 실행하고, 앱은 `config/settings.yaml`의 `vllm_url`로 vLLM을 호출한다.
 - 시스템은 LLM을 호출할 때 LangChain(`langchain-openai`)을 쓴다. LangChain은 `adapters/`의 vLLM 구현(`LlmClient` 구현) 안에서만 쓰고, 다른 모듈은 LangChain을 import하지 않는다.
 - 시스템은 꼭 필요하기 전에는 LangGraph, LangMem, 외부 프롬프트 관리 서비스, 임베딩 모델을 쓰지 않는다.
 - 의존성: 개발팀은 실행 의존성(FastAPI, uvicorn, Pydantic, `langchain-openai`, PyYAML)을 `requirements.txt`에, 테스트 의존성(pytest, FastAPI TestClient용 httpx2)을 `requirements-dev.txt`에 둔다. 운영 이미지는 `requirements.txt`의 의존성만 설치한다.
@@ -309,7 +309,7 @@ tests/                 # src/와 같은 구조. 외부 시스템은 가짜 adapt
 eval/                  # 평가셋 생성, 평가 실행. 리포트는 eval/reports/에 두고 커밋하지 않는다
 eval_set/              # 평가셋. 이름에 synthetic이 들어간 합성 평가셋만 커밋한다
 Dockerfile             # 앱 이미지 (python:3.12-slim, root가 아닌 사용자로 실행)
-compose.yaml           # 앱, vLLM
+compose.yaml           # 앱 (vLLM은 따로 실행)
 ```
 
 **모듈 규칙**
