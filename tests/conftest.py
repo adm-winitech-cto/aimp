@@ -5,9 +5,9 @@ import pytest
 from fake_llm import FakeLlmClient
 from fastapi.testclient import TestClient
 
-from transfer_recommender.api.routes import get_llm_client
-from transfer_recommender.llm_client import LlmFailure
-from transfer_recommender.main import app
+from aimp.api.routes import get_llm_client
+from aimp.ports.llm import LlmFailure
+from aimp.main import app
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -4,7 +4,7 @@
 
 ## Inbound 인터페이스
 
-병원선정서비스는 환자 정보와 환자 위치를 담아 시스템에 병원 추천을 요청합니다.
+병원선정요청은 환자 정보와 환자 위치를 담아 시스템에 병원 추천을 요청합니다.
 
 ---
 
@@ -92,14 +92,14 @@
 
 **필수 여부 규칙:**
 - 필수(`Y`) 필드
-    - 병원선정서비스는 필수 필드의 키를 반드시 보내야 합니다.
+    - 병원선정요청은 필수 필드의 키를 반드시 보내야 합니다.
     - 필수 필드의 키가 없거나, `null`을 허용하지 않는 필드의 값이 `null`이면, 시스템은 `400 Bad Request`를 반환합니다.
 - optional(`N`) 필드
-    - 병원선정서비스는 optional 필드의 키를 생략할 수 있습니다.
+    - 병원선정요청은 optional 필드의 키를 생략할 수 있습니다.
     - 키가 생략되면 시스템은 '생략 시 처리' 열에 적힌 값으로 처리합니다.
 - 예외: `patient.specialInfo`
     - 이 필드는 키 누락과 `null`의 의미가 다릅니다.
-        - 키 누락: 병원선정서비스가 값을 보내지 않음 → `400 Bad Request`
+        - 키 누락: 병원선정요청이 값을 보내지 않음 → `400 Bad Request`
         - 하위 필드 값 `null`: 해당 없음 (임산부·신생아가 아님)
     - 시스템은 이 정보로 완화할 수 없는 병원 조건('분만 가능')을 정합니다. 그래서 '보내지 않음'을 '해당 없음'으로 처리하지 않습니다.
 
@@ -111,7 +111,7 @@
 | `recommendCount` | number \| null | N | `null` | 추천받을 병원 수 (1 이상의 정수). `null`이면 시스템은 기본값(10개)만큼 추천 |
 | `patient` | object | Y | - | 환자 정보 |
 | `patient.info` | object | Y | - | 환자 기본 정보 |
-| `patient.info.age` | number | Y | - | 환자 나이 (세). 신원 미상 환자는 추정 나이를 입력. 시스템은 15세 미만이면 후보 필터에 '소아응급 진료 가능' 조건을 추가. 외상 환자가 55세 이상이거나 10세 이하이면 응답에 "직접의료지도 필요" 표시를 넣음 |
+| `patient.info.age` | number | Y | - | 환자 나이 (세). 신원 미상 환자는 추정 나이를 입력. 시스템은 15세 미만이면 진료 역량 규칙 엔진에 '소아응급 진료 가능' 조건을 추가. 외상 환자가 55세 이상이거나 10세 이하이면 응답에 "직접의료지도 필요" 표시를 넣음 |
 | `patient.info.sex` | string | N | `null` | 환자 성별 (예: `남`) |
 | `patient.info.patientType` | string | N | `null` | 환자 유형 (예: `일반환자`) |
 | `patient.chiefComplaint` | string | N | `null` | 환자가 호소하는 주된 증상. 시스템은 이 값을 LLM 입력으로만 사용 |
@@ -137,7 +137,7 @@
 | `patient.medicalHistory[].detail` | string \| null | N | `null` | 질환 상세 내용. `diseaseName`이 `기타`이면 실제 질환명을 기재 |
 | `patient.medications` | array | N | `[]` | 투여 약물 목록. 시스템은 이 값을 LLM 입력으로만 사용 (환자 상태 판단, 최종 선정 근거 작성) |
 | `patient.specialInfo` | object | Y | - | 특수 환자 정보. 키 누락과 `null`의 구분은 '필수 여부 규칙'의 예외 항목 참고 |
-| `patient.specialInfo.pregnancyInfo` | object \| null | Y | - | 임산부 정보. 임산부가 아니면 `null`. 값이 있으면 시스템은 후보 필터에 '분만 가능' 조건을 추가하고, 환자 상태 판단 LLM에 넣어 임신 20주 이상인지 판단 |
+| `patient.specialInfo.pregnancyInfo` | object \| null | Y | - | 임산부 정보. 임산부가 아니면 `null`. 값이 있으면 시스템은 진료 역량 규칙 엔진에 '분만 가능' 조건을 추가하고, 환자 상태 판단 LLM에 넣어 임신 20주 이상인지 판단 |
 | `patient.specialInfo.newbornInfo` | object \| null | Y | - | 신생아 정보. 신생아가 아니면 `null`. 시스템은 신생아를 우선 고려하지 않으므로 이 값을 사용하지 않음 |
 | `patient.remark` | string | N | `null` | 구급대원이 입력한 자유 서술 텍스트 (예: 수용을 거절한 병원, 환자가 희망하는 병원). 시스템은 이 값을 LLM 입력으로만 사용 (환자 상태 판단의 손상기전·신체검사 소견 판단, 최종 선정) |
 | `patient.location` | object | Y | - | 환자 위치 |
@@ -199,4 +199,4 @@
 
 | API | Method | Endpoint | 호출 주체 → 처리 주체 |
 |-----|--------|----------|----------------------|
-| 병원 추천 요청 | `POST` | `/api/v1/recHosp` | 병원선정서비스 → 시스템 |
+| 병원 추천 요청 | `POST` | `/api/v1/recHosp` | 병원선정요청 → 시스템 |
