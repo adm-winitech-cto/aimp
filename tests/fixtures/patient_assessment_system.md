@@ -65,12 +65,24 @@ required_depts와 supportive_depts에는 이 목록의 진료과만 넣는다.
 - 신경외과
 - 심장혈관흉부외과
 - 성형외과
+- 마취통증의학과
 - 산부인과
 - 소아청소년과
 - 안과
 - 이비인후과
 - 피부과
 - 비뇨의학과
+- 영상의학과
+- 방사선종양학과
+- 병리과
+- 진단검사의학과
+- 결핵과
+- 재활의학과
+- 예방의학과
+- 가정의학과
+- 응급의학과
+- 핵의학과
+- 작업환경의학과
 
 ## 중증응급질환 코드
 
@@ -144,4 +156,4 @@ trauma_criteria에는 이 목록의 항목만 넣는다.
 
 다음 JSON 스키마를 따르는 JSON 객체 하나만 출력한다.
 
-{"$defs": {"Department": {"description": "진료과.", "enum": ["내과", "신경과", "정신건강의학과", "외과", "정형외과", "신경외과", "심장혈관흉부외과", "성형외과", "산부인과", "소아청소년과", "안과", "이비인후과", "피부과", "비뇨의학과"], "title": "Department", "type": "string"}, "SevereDiseaseCode": {"description": "중증응급질환 코드.", "enum": ["mkioskty1", "mkioskty2", "mkioskty3", "mkioskty4", "mkioskty5", "mkioskty6", "mkioskty7", "mkioskty8", "mkioskty9", "mkioskty10", "mkioskty11", "mkioskty12", "mkioskty13", "mkioskty14", "mkioskty15", "mkioskty16", "mkioskty17", "mkioskty18", "mkioskty19", "mkioskty20", "mkioskty21", "mkioskty22", "mkioskty23", "mkioskty24", "mkioskty25", "mkioskty26", "mkioskty27"], "title": "SevereDiseaseCode", "type": "string"}, "TraumaCriterion": {"description": "중증외상 기준 항목.", "enum": ["관통 또는 자상(머리, 목, 가슴, 배, 상완부, 대퇴부)", "동요가슴(flail chest)", "두 개 이상의 근위부 긴뼈 골절", "압궤(crushed), 벗겨진(degloved), 썰린(mangled) 사지", "손목, 발목 상부의 절단", "골반 뼈 골절", "열린 또는 함몰 두개골 골절", "마비", "추락: 성인 6 m 이상(건물 3층 높이 이상), 소아 3 m 이상(건물 2층 높이 이상)", "고위험 교통사고: 차체 내부 눌림(찌그러짐) 30 cm 이상", "고위험 교통사고: 차체 찌그러짐 45 cm 이상", "고위험 교통사고: 자동차에서 이탈(튕겨져 나감)", "고위험 교통사고: 동승자의 사망", "고위험 교통사고: 차량 전복", "자동차-보행자/개인형 이동장치/자전거 충돌로 나가떨어짐, 치임 또는 시속 30 km 이상의 속도로 충돌함", "오토바이 시속 30 km 이상의 속도", "폭발에 의한 직접적 영향", "항응고 질환, 출혈성 질환", "화상과 외상이 동반된 경우", "투석이 필요한 말기신장(콩팥)질환", "시간 지연에 민감한 사지 손상", "임신 20주 이상", "구급대원의 판단"], "title": "TraumaCriterion", "type": "string"}}, "additionalProperties": false, "description": "환자 상태 판단 결과.", "properties": {"is_trauma": {"title": "Is Trauma", "type": "boolean"}, "required_depts": {"items": {"$ref": "#/$defs/Department"}, "title": "Required Depts", "type": "array"}, "supportive_depts": {"items": {"$ref": "#/$defs/Department"}, "title": "Supportive Depts", "type": "array"}, "severe_disease_code": {"anyOf": [{"$ref": "#/$defs/SevereDiseaseCode"}, {"type": "null"}]}, "trauma_criteria": {"items": {"$ref": "#/$defs/TraumaCriterion"}, "title": "Trauma Criteria", "type": "array"}}, "required": ["is_trauma", "required_depts", "supportive_depts", "severe_disease_code", "trauma_criteria"], "title": "PatientAssessment", "type": "object"}
+{"$defs": {"Department": {"description": "진료과.", "enum": ["내과", "신경과", "정신건강의학과", "외과", "정형외과", "신경외과", "심장혈관흉부외과", "성형외과", "마취통증의학과", "산부인과", "소아청소년과", "안과", "이비인후과", "피부과", "비뇨의학과", "영상의학과", "방사선종양학과", "병리과", "진단검사의학과", "결핵과", "재활의학과", "예방의학과", "가정의학과", "응급의학과", "핵의학과", "작업환경의학과"], "title": "Department", "type": "string"}, "SevereDiseaseCode": {"description": "중증응급질환 코드.", "enum": ["mkioskty1", "mkioskty2", "mkioskty3", "mkioskty4", "mkioskty5", "mkioskty6", "mkioskty7", "mkioskty8", "mkioskty9", "mkioskty10", "mkioskty11", "mkioskty12", "mkioskty13", "mkioskty14", "mkioskty15", "mkioskty16", "mkioskty17", "mkioskty18", "mkioskty19", "mkioskty20", "mkioskty21", "mkioskty22", "mkioskty23", "mkioskty24", "mkioskty25", "mkioskty26", "mkioskty27"], "title": "SevereDiseaseCode", "type": "string"}, "TraumaCriterion": {"description": "중증외상 기준 항목.", "enum": ["관통 또는 자상(머리, 목, 가슴, 배, 상완부, 대퇴부)", "동요가슴(flail chest)", "두 개 이상의 근위부 긴뼈 골절", "압궤(crushed), 벗겨진(degloved), 썰린(mangled) 사지", "손목, 발목 상부의 절단", "골반 뼈 골절", "열린 또는 함몰 두개골 골절", "마비", "추락: 성인 6 m 이상(건물 3층 높이 이상), 소아 3 m 이상(건물 2층 높이 이상)", "고위험 교통사고: 차체 내부 눌림(찌그러짐) 30 cm 이상", "고위험 교통사고: 차체 찌그러짐 45 cm 이상", "고위험 교통사고: 자동차에서 이탈(튕겨져 나감)", "고위험 교통사고: 동승자의 사망", "고위험 교통사고: 차량 전복", "자동차-보행자/개인형 이동장치/자전거 충돌로 나가떨어짐, 치임 또는 시속 30 km 이상의 속도로 충돌함", "오토바이 시속 30 km 이상의 속도", "폭발에 의한 직접적 영향", "항응고 질환, 출혈성 질환", "화상과 외상이 동반된 경우", "투석이 필요한 말기신장(콩팥)질환", "시간 지연에 민감한 사지 손상", "임신 20주 이상", "구급대원의 판단"], "title": "TraumaCriterion", "type": "string"}}, "additionalProperties": false, "description": "환자 상태 판단 결과.", "properties": {"is_trauma": {"title": "Is Trauma", "type": "boolean"}, "required_depts": {"items": {"$ref": "#/$defs/Department"}, "title": "Required Depts", "type": "array"}, "supportive_depts": {"items": {"$ref": "#/$defs/Department"}, "title": "Supportive Depts", "type": "array"}, "severe_disease_code": {"anyOf": [{"$ref": "#/$defs/SevereDiseaseCode"}, {"type": "null"}]}, "trauma_criteria": {"items": {"$ref": "#/$defs/TraumaCriterion"}, "title": "Trauma Criteria", "type": "array"}}, "required": ["is_trauma", "required_depts", "supportive_depts", "severe_disease_code", "trauma_criteria"], "title": "PatientAssessment", "type": "object"}
