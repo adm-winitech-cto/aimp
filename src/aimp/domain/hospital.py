@@ -1,31 +1,22 @@
 """병원 데이터. 병원 데이터 조회(C0)의 출력.
 
-클래스 docstring의 'DB' 항목은 docs/10_설계/erd_hospital.mmd 기준으로 값을 가져올 테이블과 컬럼이다.
+클래스 docstring의 'API' 항목은 병원정보 검색 API(docs/10_설계/interface_hospital_api.md)에서 값을 가져올 필드다.
+'API에 없음' 항목은 API가 주지 않는 값이고, 괄호 안은 docs/10_설계/erd_hospital.mmd의 DB 컬럼이다.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-
-class HospitalCategory(StrEnum):
-    """병원 분류. 병원 조회 조건과 규칙 엔진의 병원 등급 조건에 쓴다.
-
-    권역외상센터는 응급의료기관 등급과 따로 지정되므로, 한 병원이 권역외상센터이면서 권역응급의료센터일 수 있다.
-    """
-
-    REGIONAL_TRAUMA_CENTER = "권역외상센터"
-    REGIONAL_EMERGENCY_CENTER = "권역응급의료센터"
-    LOCAL_EMERGENCY_CENTER = "지역응급의료센터"
-    LOCAL_EMERGENCY_INSTITUTION = "지역응급의료기관"
-    OTHER = "기타"  # 위 분류에 속하지 않는 응급실 운영 기관
+from aimp.domain.types import HospitalCategory
 
 
 class ErBedType(StrEnum):
     """응급실 병상 종류.
 
-    DB: tapi_emrm_rltm_avl_sckbd_info_inq(응급실시간가용병상정보조회)의 컬럼
+    API: 병원 상세 availableBeds[]의 key
         GENERAL: hvec
+    API에 없음 (tapi_emrm_rltm_avl_sckbd_info_inq의 컬럼)
         PEDIATRIC: hv28
         TRAUMA_RESUSCITATION: hv60
         TRAUMA_CARE_AREA: hv61
@@ -54,18 +45,19 @@ class ErBedType(StrEnum):
 class IcuBedType(StrEnum):
     """중환자실 병상 종류.
 
-    DB: tapi_emrm_rltm_avl_sckbd_info_inq(응급실시간가용병상정보조회)의 컬럼
+    API: 병원 상세 availableBeds[]의 key
         GENERAL: hvicc
+        NEUROLOGY: hvcc
+        THORACIC_SURGERY: hvccc
+        NEONATAL: hvncc
+    API에 없음 (tapi_emrm_rltm_avl_sckbd_info_inq의 컬럼)
         INTERNAL_MEDICINE: hv2
         SURGERY: hv3
-        NEUROLOGY: hvcc
         NEUROSURGERY: hv6
-        THORACIC_SURGERY: hvccc
         CARDIOLOGY: hv34
         TRAUMA: hv9
         BURN: hv8
         PEDIATRIC: hv32
-        NEONATAL: hvncc
         EMERGENCY: hv31
         EMERGENCY_PEDIATRIC: hv33
         NEGATIVE_PRESSURE_ISOLATION: hv35
@@ -97,15 +89,80 @@ class IcuBedType(StrEnum):
     INFECTION_SEVERE = "감염 중증"
 
 
+class Equipment(StrEnum):
+    """장비.
+
+    API: 병원 상세 availableEquipment[]의 key
+        CT: hvctayn
+        MRI: hvmriayn
+        ANGIOGRAPHY: hvangioayn
+        VENTILATOR: hvventiayn
+        PREMATURE_VENTILATOR: hvventisoayn
+        INCUBATOR: hvincuayn
+        CRRT: hvcrrtayn
+        ECMO: hvecmoayn
+        HYPERBARIC_OXYGEN: hvoxyayn
+        HYPOTHERMIA: hvhypoayn
+        AMBULANCE: hvamyn
+    """
+
+    CT = "CT"
+    MRI = "MRI"
+    ANGIOGRAPHY = "혈관촬영기"
+    VENTILATOR = "인공호흡기"
+    PREMATURE_VENTILATOR = "인공호흡기(조산아)"
+    INCUBATOR = "인큐베이터"
+    CRRT = "CRRT"
+    ECMO = "ECMO"
+    HYPERBARIC_OXYGEN = "고압산소치료기"
+    HYPOTHERMIA = "저체온치료기"
+    AMBULANCE = "구급차"
+
+
+class AcceptanceStatus(StrEnum):
+    """중증질환 수용가능 여부. API: 병원 상세 acceptanceCapabilities[].value"""
+
+    AVAILABLE = "Y"
+    UNAVAILABLE = "불가능"
+    NOT_PROVIDED = "정보미제공"
+
+
+class CongestionStatus(StrEnum):
+    """응급실 혼잡 상태. API: 응급실 목록 items[].status"""
+
+    RELAXED = "여유있음"
+    NORMAL = "보통"
+    CROWDED = "혼잡"
+    NO_DATA = "정보없음"
+
+
+@dataclass(frozen=True)
+class BedCount:
+    """병상 종류 하나의 병상 수. API가 값을 주지 않으면 None이다. None은 0(가용병상 없음)과 뜻이 다르다.
+
+    API: 병원 상세 availableBeds[]의 availableCount, totalCount
+    """
+
+    available: int | None  # 가용 병상 수
+    # 전체 병상 수로 보이지만 available보다 작은 병원이 있어 뜻을 제공처에 확인해야 한다.
+    total: int | None
+
+
+@dataclass(frozen=True)
+class DiseaseAcceptance:
+    """중증질환 하나의 수용가능 여부. API: 병원 상세 acceptanceCapabilities[]의 원소 하나"""
+
+    status: AcceptanceStatus  # API: value
+    # 병원이 받을 수 있는 연령·체중 제한(예: "1500g 이상가능"). 영유아·저체중출생아 항목에만 온다. API: message
+    restriction: str | None
+
+
 @dataclass(frozen=True)
 class BlockMessage:
     """병원이 공개한 진료불가 메시지. 조회 시점에 유효한 메시지만 담는다.
 
-    DB: tapi_emrm_nd_svredss_msg_inq(응급실및중증질환메시지조회)의 한 행
-        disease_code: symtypcod (중증질환구분). 응급실 메시지와 중증질환 메시지는 symblkmsgtyp(메시지구분)로
-            나뉘는 것으로 보이며 확인이 필요하다.
-        text: symblkmsg (전달메시지)
-        조회 조건: 차단시작(symblksttdtm)과 차단종료(symblkenddtm) 사이에 조회 시점이 들어가는 행
+    API: 병원 상세 statusMessages, publicStatusMessages로 보이지만, 개발서버에서 값이 모두 비어 있어 원소 구조를
+        확인하지 못했다. 원소 구조를 확인하기 전까지 운영 구현은 이 값을 채우지 않는다.
     """
 
     disease_code: str | None  # 특정 중증질환에 대한 메시지면 질환 코드, 응급실 전체에 대한 메시지면 None
@@ -117,36 +174,46 @@ class BlockMessage:
 class Hospital:
     """조회 시점에 응급실을 운영 중인 병원 한 곳.
 
-    er_beds와 icu_beds는 모든 병상 종류를 키로 담는다. 병원이 그 종류의 값을 제공하지 않으면 값은 None이다.
-    환자에게 어떤 병상 종류를 셀지는 후보 필터가 정한다.
+    er_beds, icu_beds, equipment는 모든 종류를 키로 담는다. API가 그 종류의 값을 주지 않으면 BedCount의 두 값이나
+    equipment의 값이 None이다. 환자에게 어떤 병상 종류를 셀지는 후보 필터가 정한다.
 
-    DB
-        hospital_id: tapi_emgc_mdlcnst_list_info_inq.hpid (응급의료기관목록정보조회 기관ID).
-            다른 tapi_* 테이블도 hpid로 결합한다.
-        name: tapi_emgc_mdlcnst_list_info_inq.dutyname (기관명1)
-        longitude, latitude: tapi_emgc_mdlcnst_list_info_inq.wgs84lon, wgs84lat (병원경도, 병원위도).
-            문자열 컬럼이라 숫자로 변환한다.
-        categories: 응급의료기관 등급은 tapi_emgc_mdlcnst_list_info_inq.dutyemcls (응급의료기관분류 코드),
-            권역외상센터는 tapi_trmacntr_pstn_info_inq.dutylvkl (외상센터위치정보조회 외상센터등급).
-            코드를 HospitalCategory로 바꿔 담는다. 각 분류를 뜻하는 코드 값은 확인이 필요하다.
-        departments: tapi_emgc_mdlcnst_bsc_info_inq.dgididname (응급의료기관기본정보조회 진료과목)
-        er_beds, icu_beds: tapi_emrm_rltm_avl_sckbd_info_inq (응급실시간가용병상정보조회).
-            종류별 컬럼은 ErBedType, IcuBedType 참고
-        beds_updated_at: tapi_emrm_rltm_avl_sckbd_info_inq.hvidate (입력일시, 14자리 문자열)
-        accepting_diseases: tapi_svredss_ptn_actc_psblty_info_inq.mkioskty1~mkioskty27 (중증질환환자수용가능정보조회).
-            응급의료기관기본정보조회와 외상센터기본정보조회의 같은 이름 컬럼은 뜻이 다르므로 쓰지 않는다.
-        block_messages: tapi_emrm_nd_svredss_msg_inq (응급실및중증질환메시지조회). 컬럼은 BlockMessage 참고
-        조회 조건: tapi_emgc_mdlcnst_bsc_info_inq.dutyeryn (응급의료기관기본정보조회 응급실운영여부)
+    API
+        hospital_id: id. 응급의료기관 기관ID(hpid)와 같은 값
+        name: name
+        longitude, latitude: coordinates ([경도, 위도])
+        distance_km: 응급실 목록 items[].distance. 요청의 환자 위치에서 병원까지의 직선거리
+        categories: 응급실 목록 items[].type (권역응급의료센터, 지역응급의료센터, 지역응급의료기관).
+            API에 없음: 권역외상센터 (tapi_trmacntr_pstn_info_inq.dutylvkl)
+        departments: 병원 상세 specialty. 값은 /specialties의 진료과목 명칭
+        er_beds, icu_beds: 병원 상세 availableBeds[]. 종류별 key는 ErBedType, IcuBedType 참고
+        operating_room_beds: 병원 상세 availableBeds[]의 hvoc
+        ward_beds: 병원 상세 availableBeds[]의 hvgc
+        resuscitation_room: 병원 상세 resuscitationRoom. 어느 병상의 수인지 제공처에 확인해야 한다
+        beds_updated_at: 병원 상세 lastUpdatedAt (yyyy-MM-dd HH:mm:ss)
+        congestion, congestion_status: 응급실 목록 items[].congestion, items[].status
+        disease_acceptance: 병원 상세 acceptanceCapabilities[]. 키는 key(mkioskty1~mkioskty28)
+        equipment: 병원 상세 availableEquipment[]의 available. value가 Y면 True, N이나 N1이면 False다.
+            종류별 key는 Equipment 참고
+        delivery_room: 병원 상세 availableFacilities[]의 hv42(분만실)의 available
+        block_messages: BlockMessage 참고
     """
 
     hospital_id: str
     name: str
     longitude: float  # WGS84
     latitude: float  # WGS84
+    distance_km: float  # 환자 위치에서의 직선거리. API가 소수 첫째 자리까지 준다
     categories: frozenset[HospitalCategory]  # 병원이 속한 분류. 하나 이상
-    departments: frozenset[str]  # 보유 진료과. Pre-KTAS 조회 테이블의 진료과명과 같은 값
-    er_beds: dict[ErBedType, int | None]  # 응급실 가용병상
-    icu_beds: dict[IcuBedType, int | None]  # 중환자실 가용병상
+    departments: frozenset[str]  # 보유 진료과
+    er_beds: dict[ErBedType, BedCount]  # 응급실 가용병상
+    icu_beds: dict[IcuBedType, BedCount]  # 중환자실 가용병상
+    operating_room_beds: BedCount  # 수술실 가용병상
+    ward_beds: BedCount  # 입원실 가용병상
+    resuscitation_room: BedCount  # 소생실 병상
     beds_updated_at: datetime | None  # 병상 데이터 갱신 시각. 신선도 판정에 쓴다.
-    accepting_diseases: frozenset[str]  # 지금 수용 가능한 중증질환 코드
+    congestion: int | None  # 응급실 혼잡도 (0~100)
+    congestion_status: CongestionStatus
+    disease_acceptance: dict[str, DiseaseAcceptance]  # 중증질환 코드별 수용가능 여부
+    equipment: dict[Equipment, bool | None]  # 장비 가용 여부
+    delivery_room: bool | None  # 분만실 가용 여부
     block_messages: tuple[BlockMessage, ...]

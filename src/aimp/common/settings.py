@@ -46,6 +46,10 @@ class Settings(BaseModel):
     prompt_version: str
     vllm_url: str
     vllm_model: str
+    hospital_api_url: str
+    hospital_api_timeout_seconds: float
+    hospital_api_max_concurrency: int
+    hospital_search_radius_km: float
 
 
 def load(path: Path) -> Settings:
