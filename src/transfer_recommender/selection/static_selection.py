@@ -60,7 +60,9 @@ class StaticSelection(BaseModel):
 def _hospital_tables() -> str:
     sections = []
     for group, hospitals in HOSPITALS_BY_GROUP.items():
-        rows = "\n".join(f"- {h.hospital_id}, {h.hospital_name}, {h.transfer_count}건" for h in hospitals)
+        rows = "\n".join(
+            f"- {h.hospital_id}, {h.hospital_name}, {h.transfer_count}건" for h in hospitals if h.hospital_id
+        )
         sections.append(f"## {group}\n\n{rows}")
     return "\n\n".join(sections)
 

@@ -31,13 +31,13 @@ def _recommend(body: dict, result: LlmOutput | LlmFailure, seed: int = 0):
 
 def test_llm_recommendations_are_returned_in_order(example_request):
     """LLM이 고른 병원을 그 순서대로 1순위부터 반환하고, 병원명은 병원 목록에서 채우는지 확인한다."""
-    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "31100295", "31100759"))
+    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "A2100040", "A2100258"))
 
     assert response.incident_id == "INC-20260831-000123"
     assert response.request_seq == 2
     assert [(r.rank, r.hospital_id, r.hospital_name, r.reason) for r in response.recommendations] == [
-        (1, "31100295", "가톨릭대학교의정부성모병원", "근거 31100295"),
-        (2, "31100759", "국군수도병원", "근거 31100759"),
+        (1, "A2100040", "가톨릭대학교의정부성모병원", "근거 A2100040"),
+        (2, "A2100258", "국군수도병원", "근거 A2100258"),
     ]
 
 
@@ -45,9 +45,9 @@ def test_recommend_count_truncates(example_request):
     """recommendCount보다 많이 고르면 앞에서부터 recommendCount개만 반환하는지 확인한다."""
     example_request["recommendCount"] = 1
 
-    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "31100295", "31100759"))
+    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "A2100040", "A2100258"))
 
-    assert [r.hospital_id for r in response.recommendations] == ["31100295"]
+    assert [r.hospital_id for r in response.recommendations] == ["A2100040"]
 
 
 def test_duplicate_and_rejected_hospitals_are_removed(example_request):
@@ -55,10 +55,10 @@ def test_duplicate_and_rejected_hospitals_are_removed(example_request):
     example_request["rejectedHospitals"][0]["hospitalName"] = "국군수도병원"
 
     response, _ = _recommend(
-        example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "31100295", "31100295", "31100759", "31100473")
+        example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "A2100040", "A2100040", "A2100258", "A2100002")
     )
 
-    assert [(r.rank, r.hospital_id) for r in response.recommendations] == [(1, "31100295"), (2, "31100473")]
+    assert [(r.rank, r.hospital_id) for r in response.recommendations] == [(1, "A2100040"), (2, "A2100002")]
 
 
 @pytest.mark.parametrize(
@@ -97,7 +97,7 @@ def test_fallback_when_all_recommendations_rejected(example_request):
         {"hospitalName": "아주대학교병원", "reason": None, "rejectedAt": "2026-08-31 17:21:00"}
     )
 
-    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "31100759"))
+    response, _ = _recommend(example_request, _output((DiseaseGroup.SEVERE_TRAUMA,), "A2100258"))
 
     names = {r.hospital_name for r in response.recommendations}
     assert len(names) == len(GENERAL_HOSPITALS) - 1
@@ -117,11 +117,20 @@ def test_llm_call_uses_output_model_and_timeout(example_request):
 
 
 def test_output_schema_limits_hospital_ids_to_group_hospitals():
-    """출력 스키마의 병원 ID 값 목록이 질환군 병원 목록의 ID와 같은지 확인한다. 일반 병원 목록만의 병원은 고를 수 없다."""
+    """출력 스키마의 병원 ID 값 목록이 질환군 병원 목록의 ID와 같은지 확인한다. 일반 병원 목록만의 병원과
+    병원 ID가 빈 병원은 고를 수 없다."""
     schema = StaticSelection.model_json_schema()
-    group_ids = {h.hospital_id for hospitals in HOSPITALS_BY_GROUP.values() for h in hospitals}
+    group_ids = {h.hospital_id for hospitals in HOSPITALS_BY_GROUP.values() for h in hospitals} - {""}
 
     assert set(schema["$defs"]["HospitalId"]["enum"]) == group_ids
+
+
+def test_hospitals_without_id_are_not_in_prompt():
+    """병원 ID가 빈 병원은 프롬프트의 병원 목록에 넣지 않는지 확인한다."""
+    names = [h.hospital_name for hospitals in HOSPITALS_BY_GROUP.values() for h in hospitals if not h.hospital_id]
+
+    for name in names:
+        assert name not in static_selection.SYSTEM_PROMPT
 
 
 def test_system_prompt_contains_goal_and_hospital_tables():
@@ -131,4 +140,4 @@ def test_system_prompt_contains_goal_and_hospital_tables():
     assert "빠르게 일상에 복귀" in prompt
     for group in DiseaseGroup:
         assert f"## {group}" in prompt
-    assert "- 31100759, 국군수도병원, 3건" in prompt
+    assert "- A2100258, 국군수도병원, 3건" in prompt
