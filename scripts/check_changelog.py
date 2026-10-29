@@ -32,12 +32,9 @@ ENTRY_PREFIX = "- "
 # CHANGELOG 항목이 필요 없는 변경. 쓰는 사람이 보는 동작이 그대로인 것들이다 (정책 §7).
 EXEMPT_PATTERNS = (
     re.compile(r"^docs/"),
-    re.compile(r"^\.github/ISSUE_TEMPLATE/"),
     re.compile(r"(^|/)tests?/"),
     re.compile(r"(^|/)test_[^/]+\.py$"),
     re.compile(r"_test\.py$"),
-    re.compile(r"\.test\.tsx?$"),
-    re.compile(r"\.spec\.tsx?$"),
     re.compile(r"^CHANGELOG\.md$"),
     re.compile(r"^\.gitignore$"),
     re.compile(r"^LICENSE$"),
