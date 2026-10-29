@@ -1,7 +1,7 @@
 """병원 데이터. 병원 데이터 조회(C0)의 출력.
 
 클래스 docstring의 'API' 항목은 병원정보 검색 API(docs/10_설계/interface_hospital_api.md)에서 값을 가져올 필드다.
-'API에 없음' 항목은 API가 주지 않는 값이고, 괄호 안은 docs/10_설계/erd_hospital.mmd의 DB 컬럼이다.
+API가 주지 않는 병상 종류(소아 응급실, 외상소생실, 내과 중환자실 등)는 담지 않는다. 제공처가 이 값을 제공할 수 없다고 답했다.
 """
 
 from dataclasses import dataclass
@@ -9,37 +9,6 @@ from datetime import datetime
 from enum import StrEnum
 
 from aimp.domain.types import HospitalCategory
-
-
-class ErBedType(StrEnum):
-    """응급실 병상 종류.
-
-    API: 병원 상세 availableBeds[]의 key
-        GENERAL: hvec
-    API에 없음 (tapi_emrm_rltm_avl_sckbd_info_inq의 컬럼)
-        PEDIATRIC: hv28
-        TRAUMA_RESUSCITATION: hv60
-        TRAUMA_CARE_AREA: hv61
-        NEGATIVE_PRESSURE_ISOLATION: hv29 (응급실 음압 격리 병상)
-        ISOLATION: hv30 (응급실 일반 격리 병상)
-        ISOLATION_AREA_NEGATIVE_PRESSURE: hv13
-        ISOLATION_AREA_GENERAL: hv14
-        PEDIATRIC_NEGATIVE_PRESSURE_ISOLATION: hv15
-        PEDIATRIC_ISOLATION: hv16
-        COHORT_ISOLATION: hv27
-    """
-
-    GENERAL = "일반"
-    PEDIATRIC = "소아"
-    TRAUMA_RESUSCITATION = "외상소생실"
-    TRAUMA_CARE_AREA = "외상환자진료구역"
-    NEGATIVE_PRESSURE_ISOLATION = "음압격리"
-    ISOLATION = "일반격리"
-    ISOLATION_AREA_NEGATIVE_PRESSURE = "격리진료구역 음압격리"
-    ISOLATION_AREA_GENERAL = "격리진료구역 일반격리"
-    PEDIATRIC_NEGATIVE_PRESSURE_ISOLATION = "소아 음압격리"
-    PEDIATRIC_ISOLATION = "소아 일반격리"
-    COHORT_ISOLATION = "코호트 격리"
 
 
 class IcuBedType(StrEnum):
@@ -50,43 +19,12 @@ class IcuBedType(StrEnum):
         NEUROLOGY: hvcc
         THORACIC_SURGERY: hvccc
         NEONATAL: hvncc
-    API에 없음 (tapi_emrm_rltm_avl_sckbd_info_inq의 컬럼)
-        INTERNAL_MEDICINE: hv2
-        SURGERY: hv3
-        NEUROSURGERY: hv6
-        CARDIOLOGY: hv34
-        TRAUMA: hv9
-        BURN: hv8
-        PEDIATRIC: hv32
-        EMERGENCY: hv31
-        EMERGENCY_PEDIATRIC: hv33
-        NEGATIVE_PRESSURE_ISOLATION: hv35
-        EMERGENCY_NEGATIVE_PRESSURE_ISOLATION: hv17
-        EMERGENCY_ISOLATION: hv18
-        INFECTIOUS_DISEASE: hv22
-        INFECTIOUS_DISEASE_NEGATIVE_PRESSURE: hv23
-        INFECTION_SEVERE: hv24
     """
 
     GENERAL = "일반"
-    INTERNAL_MEDICINE = "내과"
-    SURGERY = "외과"
     NEUROLOGY = "신경과"
-    NEUROSURGERY = "신경외과"
     THORACIC_SURGERY = "흉부외과"
-    CARDIOLOGY = "심장내과"
-    TRAUMA = "외상"
-    BURN = "화상"
-    PEDIATRIC = "소아"
     NEONATAL = "신생아"
-    EMERGENCY = "응급전용"
-    EMERGENCY_PEDIATRIC = "응급전용 소아"
-    NEGATIVE_PRESSURE_ISOLATION = "음압격리"
-    EMERGENCY_NEGATIVE_PRESSURE_ISOLATION = "응급전용 음압격리"
-    EMERGENCY_ISOLATION = "응급전용 일반격리"
-    INFECTIOUS_DISEASE = "감염병 전담"
-    INFECTIOUS_DISEASE_NEGATIVE_PRESSURE = "감염병 전담 음압격리"
-    INFECTION_SEVERE = "감염 중증"
 
 
 class Equipment(StrEnum):
@@ -174,7 +112,7 @@ class BlockMessage:
 class Hospital:
     """조회 시점에 응급실을 운영 중인 병원 한 곳.
 
-    er_beds, icu_beds, equipment는 모든 종류를 키로 담는다. API가 그 종류의 값을 주지 않으면 BedCount의 두 값이나
+    icu_beds와 equipment는 모든 종류를 키로 담는다. API가 그 종류의 값을 주지 않으면 BedCount의 두 값이나
     equipment의 값이 None이다. 환자에게 어떤 병상 종류를 셀지는 후보 필터가 정한다.
 
     API
@@ -183,9 +121,10 @@ class Hospital:
         longitude, latitude: coordinates ([경도, 위도])
         distance_km: 응급실 목록 items[].distance. 요청의 환자 위치에서 병원까지의 직선거리
         categories: 응급실 목록 items[].type (권역응급의료센터, 지역응급의료센터, 지역응급의료기관).
-            API에 없음: 권역외상센터 (tapi_trmacntr_pstn_info_inq.dutylvkl)
+            API에 권역외상센터 분류가 없어서, 권역외상센터는 config/trauma_centers.yaml의 hpid 목록으로 정한다
         departments: 병원 상세 specialty. 값은 /specialties의 진료과목 명칭
-        er_beds, icu_beds: 병원 상세 availableBeds[]. 종류별 key는 ErBedType, IcuBedType 참고
+        er_beds: 병원 상세 availableBeds[]의 hvec
+        icu_beds: 병원 상세 availableBeds[]. 종류별 key는 IcuBedType 참고
         operating_room_beds: 병원 상세 availableBeds[]의 hvoc
         ward_beds: 병원 상세 availableBeds[]의 hvgc
         resuscitation_room: 병원 상세 resuscitationRoom. 어느 병상의 수인지 제공처에 확인해야 한다
@@ -205,7 +144,7 @@ class Hospital:
     distance_km: float  # 환자 위치에서의 직선거리. API가 소수 첫째 자리까지 준다
     categories: frozenset[HospitalCategory]  # 병원이 속한 분류. 하나 이상
     departments: frozenset[str]  # 보유 진료과
-    er_beds: dict[ErBedType, BedCount]  # 응급실 가용병상
+    er_beds: BedCount  # 응급실 가용병상
     icu_beds: dict[IcuBedType, BedCount]  # 중환자실 가용병상
     operating_room_beds: BedCount  # 수술실 가용병상
     ward_beds: BedCount  # 입원실 가용병상

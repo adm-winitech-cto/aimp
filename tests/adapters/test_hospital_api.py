@@ -12,14 +12,14 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from aimp.adapters.hospital_api import HospitalApiRepository
+from aimp.adapters.hospital_api import TRAUMA_CENTER_IDS, HospitalApiRepository, load_trauma_center_ids
+from aimp.common.settings import CONFIG_DIR
 from aimp.domain.hospital import (
     AcceptanceStatus,
     BedCount,
     CongestionStatus,
     DiseaseAcceptance,
     Equipment,
-    ErBedType,
     IcuBedType,
 )
 from aimp.domain.types import HospitalCategory
@@ -45,12 +45,12 @@ def _item(key, value="", available=None, message=None, available_count=None, tot
     }
 
 
-def _room(hospital_id: str, distance: float) -> dict:
+def _room(hospital_id: str, distance: float, type_: str = "권역응급의료센터") -> dict:
     """응급실 목록의 항목 하나."""
     return {
         "id": hospital_id,
         "name": f"병원{hospital_id}",
-        "type": "권역응급의료센터",
+        "type": type_,
         "region": "중구",
         "address": "주소",
         "phone": "053-000-0000",
@@ -119,13 +119,17 @@ def _detail(hospital_id: str) -> dict:
 
 
 class FakeHospitalApi(ThreadingHTTPServer):
-    """테스트마다 응급실 목록과 병원 상세를 정해 둔다. 받은 요청의 경로, 검색 조건, 헤더를 기록한다."""
+    """테스트마다 응급실 목록과 병원 상세를 정해 둔다. 받은 요청의 경로, 검색 조건, 헤더를 기록한다.
+
+    반경(radiusKm) 없는 응급실 목록 요청에는 national_rooms(전국 응급실)를 돌려준다.
+    """
 
     daemon_threads = True
 
     def __init__(self):
         super().__init__(("127.0.0.1", 0), _Handler)
         self.rooms = [_room("A1", 1.2)]
+        self.national_rooms: list[dict] = []
         self.details = {"A1": _detail("A1")}
         self.page_size = 100  # 응급실 목록 한 페이지에 담는 항목 수
         self.status = 200
@@ -150,11 +154,12 @@ class _Handler(BaseHTTPRequestHandler):
         with self.server._lock:
             self.server.requests.append((url.path, params, dict(self.headers)))
         if url.path == "/emergency-rooms":
+            rooms = self.server.rooms if "radiusKm" in params else self.server.national_rooms
             page = int(params["page"])
             size = self.server.page_size
             data = {
-                "items": self.server.rooms[(page - 1) * size : page * size],
-                "totalCount": len(self.server.rooms),
+                "items": rooms[(page - 1) * size : page * size],
+                "totalCount": len(rooms),
                 "page": page,
                 "pageSize": size,
             }
@@ -183,9 +188,15 @@ def api():
     server.server_close()
 
 
-def _repository(api: FakeHospitalApi) -> HospitalApiRepository:
+def _repository(api: FakeHospitalApi, trauma_center_ids: frozenset[str] = frozenset()) -> HospitalApiRepository:
     return HospitalApiRepository(
-        url=api.url, timeout=3.0, max_concurrency=4, radius_km=50.0, client_id="client", api_key="key"
+        url=api.url,
+        timeout=3.0,
+        max_concurrency=4,
+        radius_km=50.0,
+        trauma_center_ids=trauma_center_ids,
+        client_id="client",
+        api_key="key",
     )
 
 
@@ -206,17 +217,16 @@ def test_maps_room_and_detail_to_hospital(api):
 
 
 def test_maps_beds(api):
-    """API가 주는 병상 종류는 가용 수와 전체 수를 담고, 주지 않는 종류는 두 값을 None으로 두는지 확인한다."""
+    """병상 종류마다 가용 수와 전체 수를 담고, API 값이 "- / -"이면 두 값을 None으로 두는지 확인한다."""
     [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
 
-    assert hospital.er_beds[ErBedType.GENERAL] == BedCount(available=6, total=15)
-    assert hospital.er_beds[ErBedType.PEDIATRIC] == BedCount(available=None, total=None)
-    assert set(hospital.er_beds) == set(ErBedType)
-    assert hospital.icu_beds[IcuBedType.GENERAL] == BedCount(available=17, total=24)
-    assert hospital.icu_beds[IcuBedType.NEONATAL] == BedCount(available=0, total=3)
-    assert hospital.icu_beds[IcuBedType.NEUROLOGY] == BedCount(available=None, total=None)  # API 값이 "- / -"
-    assert hospital.icu_beds[IcuBedType.TRAUMA] == BedCount(available=None, total=None)  # API가 주지 않는 종류
-    assert set(hospital.icu_beds) == set(IcuBedType)
+    assert hospital.er_beds == BedCount(available=6, total=15)
+    assert hospital.icu_beds == {
+        IcuBedType.GENERAL: BedCount(available=17, total=24),
+        IcuBedType.NEUROLOGY: BedCount(available=None, total=None),
+        IcuBedType.THORACIC_SURGERY: BedCount(available=None, total=None),
+        IcuBedType.NEONATAL: BedCount(available=0, total=3),
+    }
     assert hospital.operating_room_beds == BedCount(available=10, total=8)
     assert hospital.ward_beds == BedCount(available=152, total=451)
     assert hospital.resuscitation_room == BedCount(available=1, total=3)
@@ -288,10 +298,62 @@ def test_reads_all_pages_and_keeps_room_order(api):
     assert [params["page"] for path, params, _ in api.requests if path == "/emergency-rooms"] == ["1", "2", "3"]
 
 
-def test_trauma_center_only_returns_empty_without_call(api):
-    """API에 권역외상센터 분류가 없으므로, 권역외상센터만 찾으면 API를 호출하지 않고 빈 목록을 반환하는지 확인한다."""
+def test_trauma_centers_are_picked_from_national_list_by_hpid(api):
+    """권역외상센터는 반경과 등급 조건 없이 전국 응급실 목록을 읽어, 설정 파일의 hpid에 있는 병원만 고르는지 확인한다."""
+    api.national_rooms = [_room("T1", 80.0), _room("A9", 2.0), _room("T2", 120.0, "지역응급의료센터")]
+    api.details.update({hospital_id: _detail(hospital_id) for hospital_id in ["T1", "T2"]})
+
+    hospitals = _repository(api, frozenset({"T1", "T2"})).find_by_categories(
+        LONGITUDE, LATITUDE, [HospitalCategory.REGIONAL_TRAUMA_CENTER]
+    )
+
+    assert [(h.hospital_id, h.distance_km) for h in hospitals] == [("T1", 80.0), ("T2", 120.0)]
+    assert hospitals[1].categories == {
+        HospitalCategory.LOCAL_EMERGENCY_CENTER,
+        HospitalCategory.REGIONAL_TRAUMA_CENTER,
+    }
+    [(_, list_params, _)] = [request for request in api.requests if request[0] == "/emergency-rooms"]
+    assert list_params == {"longitude": str(LONGITUDE), "latitude": str(LATITUDE), "page": "1", "pageSize": "100"}
+
+
+def test_trauma_centers_merge_with_grade_query_by_distance(api):
+    """권역외상센터와 등급 조건을 함께 찾으면, 두 조회 결과를 중복 없이 합쳐 직선거리 순으로 두는지 확인한다."""
+    api.rooms = [_room("A1", 1.2), _room("T1", 30.0)]
+    api.national_rooms = [_room("A1", 1.2), _room("T1", 30.0), _room("T2", 5.0)]
+    api.details.update({hospital_id: _detail(hospital_id) for hospital_id in ["T1", "T2"]})
+
+    hospitals = _repository(api, frozenset({"T1", "T2"})).find_by_categories(
+        LONGITUDE, LATITUDE, [HospitalCategory.REGIONAL_TRAUMA_CENTER, HospitalCategory.REGIONAL_EMERGENCY_CENTER]
+    )
+
+    assert [h.hospital_id for h in hospitals] == ["A1", "T2", "T1"]
+    assert HospitalCategory.REGIONAL_TRAUMA_CENTER not in hospitals[0].categories
+    assert HospitalCategory.REGIONAL_TRAUMA_CENTER in hospitals[2].categories  # 등급 조건으로 찾은 권역외상센터
+
+
+def test_empty_trauma_center_list_returns_empty_without_call(api):
+    """권역외상센터 목록이 비어 있으면, 권역외상센터만 찾을 때 API를 호출하지 않고 빈 목록을 반환하는지 확인한다."""
     assert _repository(api).find_by_categories(LONGITUDE, LATITUDE, [HospitalCategory.REGIONAL_TRAUMA_CENTER]) == []
     assert api.requests == []
+
+
+def test_trauma_center_file_loads():
+    """저장소의 권역외상센터 목록 파일을 읽을 수 있는지 확인한다."""
+    assert load_trauma_center_ids(CONFIG_DIR / "trauma_centers.yaml") == TRAUMA_CENTER_IDS
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["regional_trauma_centers: [A1, A2]\n", "trauma_centers: {}\n", "regional_trauma_centers: {A1: x, A1: y}\n"],
+    ids=["list-not-mapping", "unknown-key", "duplicate-hpid"],
+)
+def test_malformed_trauma_center_file_fails_to_load(tmp_path, text):
+    """권역외상센터 목록 파일의 형식이 틀리거나 같은 hpid가 두 번 나오면 읽지 못하는지 확인한다."""
+    path = tmp_path / "trauma_centers.yaml"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_trauma_center_ids(path)
 
 
 def test_empty_categories_raises_value_error(api):
