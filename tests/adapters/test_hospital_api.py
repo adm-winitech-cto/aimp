@@ -261,6 +261,16 @@ def test_missing_resuscitation_room_and_update_time_are_none(api):
     assert hospital.beds_updated_at is None
 
 
+def test_block_messages_keep_sentences_from_both_fields(api):
+    """두 메시지 필드의 문장을 순서대로 담고, 빈 문장은 빼고, 같은 문장은 한 번만 담는지 확인한다."""
+    api.details["A1"]["statusMessages"] = ["정형외과 수술 불가 (전문의 부재)", "  "]
+    api.details["A1"]["publicStatusMessages"] = ["CT 장비 점검 중", "정형외과 수술 불가 (전문의 부재)"]
+
+    [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
+
+    assert hospital.block_messages == ("정형외과 수술 불가 (전문의 부재)", "CT 장비 점검 중")
+
+
 def test_request_uses_location_radius_classes_and_auth_headers(api):
     """응급실 목록은 환자 위치·반경·등급으로, 병원 상세는 환자 위치로 인증 헤더와 함께 조회하는지 확인한다."""
     _repository(api).find_by_categories(
@@ -390,7 +400,13 @@ def _unknown_room_type(api):
     api.rooms[0]["type"] = "응급실운영신고기관"
 
 
-@pytest.mark.parametrize("mutate", [_unknown_acceptance_value, _missing_detail_field, _unknown_room_type])
+def _non_string_message(api):
+    api.details["A1"]["statusMessages"] = [{"messageContent": "정형외과 수술 불가"}]
+
+
+@pytest.mark.parametrize(
+    "mutate", [_unknown_acceptance_value, _missing_detail_field, _unknown_room_type, _non_string_message]
+)
 def test_unexpected_response_raises_lookup_error(api, mutate):
     """모르는 값이 오거나 필드가 빠지면 일부 병원을 빼지 않고 HospitalLookupError를 내는지 확인한다."""
     api.rooms.append(_room("A2", 2.0))

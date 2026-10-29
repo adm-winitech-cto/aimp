@@ -186,8 +186,6 @@ def _to_hospital(room: dict[str, Any], detail: dict[str, Any], trauma_center_ids
     equipment = {e["key"]: e["available"] for e in detail["availableEquipment"]}
     facilities = {f["key"]: f["available"] for f in detail["availableFacilities"]}
     resuscitation = detail["resuscitationRoom"]
-    if detail["statusMessages"] or detail["publicStatusMessages"]:
-        logger.warning("진료불가 메시지의 원소 구조를 확인하지 못해 메시지를 담지 않는다 hospital_id=%s", detail["id"])
     longitude, latitude = detail["coordinates"]
     categories = {HospitalCategory(room["type"])}
     if detail["id"] in trauma_center_ids:
@@ -220,5 +218,16 @@ def _to_hospital(room: dict[str, Any], detail: dict[str, Any], trauma_center_ids
         },
         equipment={t: equipment.get(key) for t, key in _EQUIPMENT_KEYS.items()},
         delivery_room=facilities.get(_DELIVERY_ROOM_KEY),
-        block_messages=(),
+        block_messages=_block_messages(detail["statusMessages"] + detail["publicStatusMessages"]),
     )
+
+
+def _block_messages(messages: list[Any]) -> tuple[str, ...]:
+    """진료불가 메시지 문장을 순서대로 모은다. 빈 문장은 빼고, 같은 문장은 한 번만 담는다.
+
+    원소가 문자열이 아니면 ValueError를 낸다. 개발서버에 메시지가 있는 병원이 없어서, 원소가 자연어 문장이라는 것은
+    제공처 답변으로만 확인했다.
+    """
+    if not all(isinstance(message, str) for message in messages):
+        raise ValueError(f"진료불가 메시지의 원소가 문자열이 아닙니다: {messages!r}")
+    return tuple(dict.fromkeys(message.strip() for message in messages if message.strip()))
