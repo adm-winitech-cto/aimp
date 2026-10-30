@@ -14,7 +14,7 @@ from aimp.domain.hospital import (
     IcuBedType,
 )
 from aimp.domain.patient import PatientAssessment, SevereJudgment
-from aimp.domain.types import PatientCategory, SevereDiseaseCode, WarningCode
+from aimp.domain.types import Department, PatientCategory, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
 from aimp.engines.capability import CandidateHospital
 
@@ -31,6 +31,7 @@ def _hospital(
     icu_available: list[int | None] | None = None,
     beds_updated_at: datetime | None = FRESH,
     disease_acceptance: dict[str, AcceptanceStatus] | None = None,
+    departments: frozenset[Department] = frozenset(),
 ) -> Hospital:
     """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다.
 
@@ -43,7 +44,7 @@ def _hospital(
         latitude=37.0,
         distance_km=1.0,
         categories=frozenset(),
-        departments=frozenset(),
+        departments=departments,
         er_beds=BedCount(available=er_available, total=None),
         icu_beds={bed_type: BedCount(count, None) for bed_type, count in zip(IcuBedType, icu_available or [])},
         operating_room_beds=NO_BEDS,
@@ -174,11 +175,13 @@ def test_cardiac_arrest_skips_all_conditions():
     assert warnings == []
 
 
-def _assessment(severe_disease_code: SevereDiseaseCode | None) -> PatientAssessment:
+def _assessment(
+    severe_disease_code: SevereDiseaseCode | None = None, required_depts: tuple[Department, ...] = ()
+) -> PatientAssessment:
     return PatientAssessment(
         is_trauma=False,
-        required_depts=(),
-        supportive_depts=(),
+        required_depts=required_depts,
+        supportive_depts=(Department.ANESTHESIOLOGY,),
         severe_disease_code=severe_disease_code,
         trauma_criteria=(),
     )
@@ -230,3 +233,57 @@ def test_disease_condition_skipped_without_severe_disease_code():
     candidates, _ = _filter_with_assessment(DISEASE_HOSPITALS, _assessment(None))
 
     assert _ids(candidates) == [hospital.hospital_id for hospital in DISEASE_HOSPITALS]
+
+
+ORTHO = frozenset({Department.ORTHOPEDIC_SURGERY})
+ORTHO_AND_GS = frozenset({Department.ORTHOPEDIC_SURGERY, Department.GENERAL_SURGERY})
+NEEDS_ORTHO = _assessment(required_depts=(Department.ORTHOPEDIC_SURGERY,))  # 필수 진료과가 정형외과인 환자
+
+
+def test_removes_hospitals_without_required_dept():
+    """필수 진료과가 정형외과면 정형외과가 있는 병원은 남고, 없는 병원은 태그가 붙어도 빠지는지 확인한다.
+
+    보조 진료과(마취통증의학과)는 거르는 데 쓰지 않는다.
+    """
+    hospitals = [
+        _hospital("ORTHO", departments=ORTHO),
+        _hospital("NONE"),
+        _hospital("GS", departments=frozenset({Department.GENERAL_SURGERY})),
+        _hospital("STALE_NONE", beds_updated_at=STALE),
+    ]
+
+    candidates, _ = _filter_with_assessment(hospitals, NEEDS_ORTHO)
+
+    assert _ids(candidates) == ["ORTHO"]
+
+
+def test_removes_hospitals_missing_one_of_two_required_depts():
+    """필수 진료과가 두 개면 둘 다 있는 병원만 남고 하나만 있는 병원은 빠지는지 확인한다."""
+    hospitals = [_hospital("ORTHO", departments=ORTHO), _hospital("BOTH", departments=ORTHO_AND_GS)]
+
+    assessment = _assessment(required_depts=(Department.ORTHOPEDIC_SURGERY, Department.GENERAL_SURGERY))
+
+    candidates, _ = _filter_with_assessment(hospitals, assessment)
+
+    assert _ids(candidates) == ["BOTH"]
+
+
+@pytest.mark.parametrize("assessment", [None, _assessment()], ids=["assessment_none", "required_depts_empty"])
+def test_required_dept_condition_skipped(assessment):
+    """환자 상태 판단 결과가 None이거나 필수 진료과가 비어 있으면 진료과 조건을 적용하지 않는지 확인한다."""
+    hospitals = [_hospital("NONE"), _hospital("ORTHO", departments=ORTHO)]
+
+    candidates, _ = _filter_with_assessment(hospitals, assessment)
+
+    assert _ids(candidates) == ["NONE", "ORTHO"]
+
+
+def test_cardiac_arrest_skips_required_dept_condition():
+    """심폐정지 환자에게는 필수 진료과가 없는 병원도 남는지 확인한다."""
+    hospital = _hospital("NONE")
+
+    candidates, _ = capability.filter_candidates(
+        [hospital], NOT_SEVERE, NEEDS_ORTHO, PatientCategory.CARDIAC_ARREST, QUERIED_AT
+    )
+
+    assert _ids(candidates) == ["NONE"]

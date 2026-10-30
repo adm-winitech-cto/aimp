@@ -1,6 +1,6 @@
 """진료 역량 규칙 엔진(C). 병원의 진료 역량 조건(PRD_v0.1.md F-13)을 만족하지 않는 병원을 후보에서 뺀다.
 
-지금은 가용병상 조건(응급실, 중환자실)과 중증응급질환 수용가능 조건을 적용한다. 필수 진료과, 특수 자원 조건은 뒤
+지금은 가용병상 조건(응급실, 중환자실), 중증응급질환 수용가능 조건, 필수 진료과 조건을 적용한다. 특수 자원 조건은 뒤
 일감이 filter_candidates에 추가한다.
 """
 
@@ -43,8 +43,8 @@ def filter_candidates(
     """(남은 후보 병원 목록, 경고 목록). 남은 후보는 입력 순서를 유지한다.
 
     queried_at은 병원정보 조회 시각이다. beds_updated_at(API의 lastUpdatedAt)과 같이 시간대 정보 없는 KST로 준다.
-    assessment가 None이면(환자 상태 판단 실패) 중증응급질환 수용가능 조건을 적용하지 않는다.
-    severe_judgment와 assessment는 뒤 일감이 추가할 조건(필수 진료과, 특수 자원)도 쓴다.
+    assessment가 None이면(환자 상태 판단 실패) 중증응급질환 수용가능 조건과 필수 진료과 조건을 적용하지 않는다.
+    severe_judgment와 assessment는 뒤 일감이 추가할 조건(특수 자원)도 쓴다.
     """
     if category == PatientCategory.CARDIAC_ARREST:  # 심폐정지 환자에게는 어떤 조건도 적용하지 않는다
         return [CandidateHospital(hospital, stale_beds=False) for hospital in hospitals], []
@@ -52,10 +52,13 @@ def filter_candidates(
     max_age = timedelta(minutes=settings.bed_data_max_age_minutes)
     check_icu = settings.require_icu_beds and category in SEVERE_CATEGORIES
     disease_code = assessment.severe_disease_code if assessment is not None else None
+    required_depts = assessment.required_depts if assessment is not None else ()
     candidates: list[CandidateHospital] = []
     for hospital in hospitals:
-        # 중증응급질환 수용가능 조건은 병상 신선도 태그와 관계없이 적용한다
+        # 중증응급질환 수용가능 조건과 필수 진료과 조건은 병상 신선도 태그와 관계없이 적용한다
         if disease_code is not None and not _accepts_disease(hospital, disease_code):
+            continue
+        if not hospital.departments.issuperset(required_depts):  # 필수 진료과 중 하나라도 없는 병원은 뺀다
             continue
         stale = hospital.beds_updated_at is None or queried_at - hospital.beds_updated_at > max_age
         # 태그가 붙은 병원에는 가용병상 조건을 적용하지 않는다

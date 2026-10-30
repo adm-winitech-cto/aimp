@@ -28,7 +28,7 @@ from aimp.domain.hospital import (
     Hospital,
     IcuBedType,
 )
-from aimp.domain.types import HospitalCategory
+from aimp.domain.types import Department, HospitalCategory
 from aimp.ports.hospital_repository import HospitalLookupError
 
 logger = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ def _to_hospital(
         latitude=latitude,
         distance_km=room["distance"],
         categories=frozenset(categories),
-        departments=frozenset(detail["specialty"]),
+        departments=_departments(detail["id"], detail["specialty"]),
         er_beds=beds.get(_ER_BED_KEY, _NO_BEDS),
         icu_beds={t: beds.get(key, _NO_BEDS) for t, key in _ICU_BED_KEYS.items()},
         operating_room_beds=beds.get(_OPERATING_ROOM_KEY, _NO_BEDS),
@@ -246,6 +246,14 @@ def _to_hospital(
         delivery_room=facilities.get(_DELIVERY_ROOM_KEY),
         block_messages=_block_messages(detail["statusMessages"] + detail["publicStatusMessages"], now),
     )
+
+
+def _departments(hospital_id: str, specialty: list[str]) -> frozenset[Department]:
+    """병원 상세 specialty의 진료과목 명칭을 Department로 바꾼다. Department에 없는 명칭은 버리고 DEBUG 로그로 남긴다."""
+    names = {name for name in specialty if name in Department}
+    if unknown := sorted(set(specialty) - names):
+        logger.debug("Department에 없는 진료과목 명칭을 버린다 hospital_id=%s names=%s", hospital_id, unknown)
+    return frozenset(Department(name) for name in names)
 
 
 def _block_messages(messages: list[dict[str, Any]], now: datetime) -> tuple[str, ...]:
