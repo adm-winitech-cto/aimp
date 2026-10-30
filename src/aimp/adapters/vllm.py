@@ -1,4 +1,4 @@
-"""LlmClient의 vLLM 구현. 환자 상태 판단(A1)과 최종 선정(E)이 함께 쓴다.
+"""LlmClient의 vLLM 구현. 환자 상태 판단(A1), 진료 역량 규칙 엔진(C)의 진료불가 메시지 판단, 최종 선정(E)이 함께 쓴다.
 
 - LangChain ChatOpenAI로 vLLM의 OpenAI 호환 API를 호출한다.
 - LangChain은 이 파일 안에서만 쓴다.

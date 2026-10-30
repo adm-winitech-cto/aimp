@@ -53,7 +53,7 @@ def run(
         # 엔진이 붙인 태그(병상 정보 오래됨, 분만 가능)는 최종 선정(#18)을 붙일 때 넘긴다
         if settings.capability_engine_enabled:
             passed, capability_warnings = capability.filter_candidates(
-                candidates, severe_judgment, assessment, category, queried_at
+                candidates, severe_judgment, assessment, category, queried_at, llm_client
             )
             candidates = [candidate.hospital for candidate in passed]
         if candidates:

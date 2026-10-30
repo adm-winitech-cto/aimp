@@ -1,4 +1,4 @@
-"""LLM 호출 인터페이스. 환자 상태 판단(A1)과 최종 선정(E)이 함께 쓴다.
+"""LLM 호출 인터페이스. 환자 상태 판단(A1), 진료 역량 규칙 엔진(C)의 진료불가 메시지 판단, 최종 선정(E)이 함께 쓴다.
 
 - 인터페이스는 OpenAI chat 형식을 따른다. 메시지는 vLLM /v1/chat/completions에 그대로 보낼 수 있는 형식이고,
   매개변수 이름은 OpenAI SDK의 chat.completions.parse()와 같다.

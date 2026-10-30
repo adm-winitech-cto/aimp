@@ -1,8 +1,11 @@
 """진료 역량 규칙 엔진(C) 테스트. PRD_v0.1.md F-13 '진료 역량 규칙 엔진'의 조건과 병상 신선도 태그를 확인한다."""
 
+import json
+import logging
 from datetime import datetime, timedelta
 
 import pytest
+from fake_llm import FakeLlmClient
 
 from aimp.common.settings import settings
 from aimp.domain.hospital import (
@@ -16,13 +19,24 @@ from aimp.domain.hospital import (
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Department, PatientCategory, Resource, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
-from aimp.engines.capability import CandidateHospital
+from aimp.engines.capability import BlockedDepartments, BlockMessageJudgment, CandidateHospital
+from aimp.ports.llm import LlmFailure, LlmOutput
 
 NO_BEDS = BedCount(available=None, total=None)
 QUERIED_AT = datetime(2026, 10, 30, 14, 0, 0)  # 조회 시각. 시간대 정보 없는 KST
 FRESH = QUERIED_AT - timedelta(minutes=5)  # 임계치(15분) 안의 갱신 시각
 STALE = QUERIED_AT - timedelta(minutes=settings.bed_data_max_age_minutes + 1)
 NOT_SEVERE = SevereJudgment(severe_type=None, category=None, required_resources=frozenset())
+
+
+class _NoCallLlm:
+    """진료불가 메시지 판단 LLM을 호출하지 않아야 하는 테스트에 쓰는 LlmClient. 호출하면 테스트가 실패한다."""
+
+    def invoke(self, messages, response_format, timeout):
+        raise AssertionError("진료불가 메시지 판단 LLM을 호출했다")
+
+
+NO_LLM = _NoCallLlm()
 
 
 def _hospital(
@@ -33,6 +47,7 @@ def _hospital(
     disease_acceptance: dict[str, AcceptanceStatus] | None = None,
     departments: frozenset[Department] = frozenset(),
     delivery_room: bool | None = None,
+    block_messages: tuple[str, ...] = (),
 ) -> Hospital:
     """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다.
 
@@ -59,14 +74,14 @@ def _hospital(
         },
         equipment={},
         delivery_room=delivery_room,
-        block_messages=(),
+        block_messages=block_messages,
     )
 
 
 def _filter(
     hospitals: list[Hospital], category: PatientCategory = PatientCategory.MINOR_TRAUMA
 ) -> tuple[list[CandidateHospital], list[WarningCode]]:
-    return capability.filter_candidates(hospitals, NOT_SEVERE, None, category, QUERIED_AT)
+    return capability.filter_candidates(hospitals, NOT_SEVERE, None, category, QUERIED_AT, NO_LLM)
 
 
 def _ids(candidates: list[CandidateHospital]) -> list[str]:
@@ -191,7 +206,9 @@ def _assessment(
 def _filter_with_assessment(
     hospitals: list[Hospital], assessment: PatientAssessment | None
 ) -> tuple[list[CandidateHospital], list[WarningCode]]:
-    return capability.filter_candidates(hospitals, NOT_SEVERE, assessment, PatientCategory.SEVERE_NON_TRAUMA, QUERIED_AT)
+    return capability.filter_candidates(
+        hospitals, NOT_SEVERE, assessment, PatientCategory.SEVERE_NON_TRAUMA, QUERIED_AT, NO_LLM
+    )
 
 
 STROKE = SevereDiseaseCode.MKIOSKTY2  # [재관류중재술] 뇌경색
@@ -284,7 +301,7 @@ def test_cardiac_arrest_skips_required_dept_condition():
     hospital = _hospital("NONE")
 
     candidates, _ = capability.filter_candidates(
-        [hospital], NOT_SEVERE, NEEDS_ORTHO, PatientCategory.CARDIAC_ARREST, QUERIED_AT
+        [hospital], NOT_SEVERE, NEEDS_ORTHO, PatientCategory.CARDIAC_ARREST, QUERIED_AT, NO_LLM
     )
 
     assert _ids(candidates) == ["NONE"]
@@ -297,7 +314,7 @@ def _filter_with_resources(
     assessment: PatientAssessment | None = None,
 ) -> list[CandidateHospital]:
     judgment = SevereJudgment(severe_type=None, category=None, required_resources=frozenset(resources))
-    candidates, _ = capability.filter_candidates(hospitals, judgment, assessment, category, QUERIED_AT)
+    candidates, _ = capability.filter_candidates(hospitals, judgment, assessment, category, QUERIED_AT, NO_LLM)
     return candidates
 
 
@@ -433,3 +450,103 @@ def test_resource_conditions_apply_regardless_of_assessment(assessment):
     candidates = _filter_with_resources(hospitals, resources, assessment=assessment)
 
     assert _delivery_tags(candidates) == {"PEDIATRICS_DELIVERY": True}
+
+
+ORTHO_BLOCKED = "[정형외과] 응급수술 불가"
+NS_BLOCKED = "[신경외과] 전문의 부재로 진료 불가"
+ER_FULL = "응급실 병상 포화"
+
+
+def _block_llm(*blocked_depts: tuple[Department, ...]) -> FakeLlmClient:
+    """메시지 번호 1, 2, ...에 blocked_depts를 차례로 내는 가짜 진료불가 메시지 판단 LLM."""
+    judgment = BlockMessageJudgment(
+        messages=tuple(
+            BlockedDepartments(message_id=i, blocked_depts=depts) for i, depts in enumerate(blocked_depts, start=1)
+        )
+    )
+    return FakeLlmClient(LlmOutput(parsed=judgment, raw=judgment.model_dump_json()))
+
+
+def _filter_with_block_llm(
+    hospitals: list[Hospital], assessment: PatientAssessment | None, llm_client
+) -> list[CandidateHospital]:
+    candidates, _ = capability.filter_candidates(
+        hospitals, NOT_SEVERE, assessment, PatientCategory.MINOR_TRAUMA, QUERIED_AT, llm_client
+    )
+    return candidates
+
+
+def _sent_texts(llm_client: FakeLlmClient) -> list[str]:
+    """가짜 LLM이 받은 user 메시지의 메시지 문장 목록."""
+    (call,) = llm_client.calls
+    return [message["text"] for message in json.loads(call.messages[1]["content"])["messages"]]
+
+
+BLOCK_HOSPITALS = [
+    _hospital("ORTHO_BLOCKED", departments=ORTHO, block_messages=(ORTHO_BLOCKED,)),
+    _hospital("NS_BLOCKED", departments=ORTHO, block_messages=(NS_BLOCKED,)),
+    _hospital("ER_FULL", departments=ORTHO, block_messages=(ER_FULL,)),
+    _hospital("NO_MESSAGE", departments=ORTHO),
+    _hospital("SAME_SENTENCE", departments=ORTHO, block_messages=(ER_FULL, ORTHO_BLOCKED)),
+]
+
+
+def test_removes_hospitals_whose_block_message_blocks_required_dept():
+    """필수 진료과가 정형외과인 환자에게 LLM이 정형외과를 낸 메시지가 있는 병원은 빠지고, 신경외과나 빈 목록을 낸
+    메시지만 있는 병원과 메시지가 없는 병원은 남는지 확인한다. 여러 병원의 같은 문장은 LLM에 한 번만 넣는다."""
+    llm_client = _block_llm((Department.ORTHOPEDIC_SURGERY,), (Department.NEUROSURGERY,), ())
+
+    candidates = _filter_with_block_llm(BLOCK_HOSPITALS, NEEDS_ORTHO, llm_client)
+
+    assert _ids(candidates) == ["NS_BLOCKED", "ER_FULL", "NO_MESSAGE"]
+    assert _sent_texts(llm_client) == [ORTHO_BLOCKED, NS_BLOCKED, ER_FULL]
+    assert llm_client.calls[0].response_format is BlockMessageJudgment
+    assert llm_client.calls[0].timeout == settings.block_message_timeout_seconds
+
+
+@pytest.mark.parametrize("failure", list(LlmFailure))
+def test_block_message_llm_failure_removes_no_hospital(failure, caplog):
+    """진료불가 메시지 판단 LLM이 실패하면 어떤 병원도 메시지로 빠지지 않고, 경고 없이 WARNING 로그만
+    남는지 확인한다."""
+    with caplog.at_level(logging.WARNING, logger=capability.__name__):
+        candidates, warnings = capability.filter_candidates(
+            BLOCK_HOSPITALS, NOT_SEVERE, NEEDS_ORTHO, PatientCategory.MINOR_TRAUMA, QUERIED_AT, FakeLlmClient(failure)
+        )
+
+    assert _ids(candidates) == [hospital.hospital_id for hospital in BLOCK_HOSPITALS]
+    assert warnings == []
+    assert f"진료불가 메시지 판단 실패 reason={failure}" in caplog.text
+
+
+@pytest.mark.parametrize("assessment", [None, _assessment()], ids=["assessment_none", "required_depts_empty"])
+def test_block_message_llm_not_called_without_required_depts(assessment):
+    """환자 상태 판단 결과가 None이거나 필수 진료과가 비어 있으면 LLM을 호출하지 않고, 메시지가 있는 병원도
+    남는지 확인한다."""
+    llm_client = _block_llm()
+
+    candidates = _filter_with_block_llm(BLOCK_HOSPITALS, assessment, llm_client)
+
+    assert llm_client.calls == []
+    assert len(candidates) == len(BLOCK_HOSPITALS)
+
+
+def test_block_message_llm_not_called_when_remaining_candidates_have_no_message():
+    """메시지가 있는 병원이 다른 조건(필수 진료과 없음)으로 빠지고 메시지가 없는 후보만 남으면 LLM을
+    호출하지 않는지 확인한다."""
+    llm_client = _block_llm()
+    hospitals = [_hospital("NO_ORTHO", block_messages=(ORTHO_BLOCKED,)), _hospital("NO_MESSAGE", departments=ORTHO)]
+
+    candidates = _filter_with_block_llm(hospitals, NEEDS_ORTHO, llm_client)
+
+    assert llm_client.calls == []
+    assert _ids(candidates) == ["NO_MESSAGE"]
+
+
+def test_block_message_input_has_weekday():
+    """LLM 입력 객체의 조회 시각에 요일과 평일·주말 구분이 들어가고, 메시지 번호가 1부터 매겨지는지 확인한다."""
+    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], datetime(2026, 10, 30, 14, 5))
+
+    assert data == {
+        "queried_at": "2026-10-30(금, 평일) 14:05",
+        "messages": [{"message_id": 1, "text": ORTHO_BLOCKED}, {"message_id": 2, "text": ER_FULL}],
+    }

@@ -41,9 +41,11 @@ class Settings(BaseModel):
     require_icu_beds: bool
     capability_engine_enabled: bool
     assessment_timeout_seconds: float
+    block_message_timeout_seconds: float
     llm_timeout_seconds: float
     vllm_max_waiting_requests: int
     assessment_prompt_version: str
+    block_message_prompt_version: str
     prompt_version: str
     vllm_url: str
     vllm_model: str
