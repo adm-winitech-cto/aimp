@@ -60,23 +60,15 @@ _RESOURCE_CONDITIONS: dict[Resource, Callable[[Hospital], bool]] = {
 
 # 진료불가 메시지 판단 LLM의 출력 스키마. docstring은 JSON 스키마의 description이 되어 프롬프트에 들어간다.
 # 필드에 기본값을 두지 않아 JSON 스키마의 required에 모든 키가 들어가게 한다(PatientAssessment와 같다).
-class BlockedDepartments(BaseModel):
-    """진료불가 메시지 하나의 판단 결과."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    message_id: int
-    blocked_depts: tuple[Department, ...]
-
-
-# 진료과를 고른 메시지만 담는다. 메시지마다 결과를 내게 하면 출력 토큰이 메시지 수만큼 늘어, 경기도 후보 병원의
-# 메시지(29문장)에서 제한 시간 3초를 넘겼다(2026-10-30 로컬 vLLM).
+# 메시지마다 막힌 진료과를 내게 하면 출력 토큰이 메시지 수만큼 늘어, 개발서버 수원 후보의 메시지(29문장)에서 제한
+# 시간 3초를 넘겼다. 진료과를 고른 메시지만 내게 해도 194문장에서 3초를 넘겨서, 필수 진료과만 묻고 막힌 메시지
+# 번호만 받는다(194문장 0.4~0.8초, 2026-10-30 로컬 vLLM).
 class BlockMessageJudgment(BaseModel):
-    """진료불가 메시지 판단 결과. 지금 진료할 수 없는 진료과를 하나 이상 고른 메시지만 담는다."""
+    """진료불가 메시지 판단 결과."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    messages: tuple[BlockedDepartments, ...]
+    blocked_message_ids: tuple[int, ...]  # 필수 진료과 중 하나라도 지금 진료할 수 없다고 알리는 메시지의 번호
 
 
 def _render_system_prompt(version: str) -> str:
@@ -156,20 +148,26 @@ def _accepts_disease(hospital: Hospital, code: SevereDiseaseCode) -> bool:
     return acceptance is not None and acceptance.status == AcceptanceStatus.AVAILABLE
 
 
-def build_input(sentences: list[str], queried_at: datetime) -> dict[str, Any]:
+def build_input(
+    sentences: list[str], required_depts: frozenset[Department], queried_at: datetime
+) -> dict[str, Any]:
     """LLM 입력 객체. message_id는 sentences의 1부터 시작하는 순번이다."""
     day_type = "평일" if queried_at.weekday() < 5 else "주말"  # 공휴일은 알 수 없다
     return {
         "queried_at": f"{queried_at:%Y-%m-%d}({WEEKDAYS[queried_at.weekday()]}, {day_type}) {queried_at:%H:%M}",
+        "required_depts": [dept for dept in Department if dept in required_depts],  # 열거형 정의 순서
         "messages": [{"message_id": i, "text": sentence} for i, sentence in enumerate(sentences, start=1)],
     }
 
 
-def build_messages(sentences: list[str], queried_at: datetime) -> list[ChatMessage]:
+def build_messages(
+    sentences: list[str], required_depts: frozenset[Department], queried_at: datetime
+) -> list[ChatMessage]:
     """[system 메시지, user 메시지]. user 메시지는 LLM 입력 객체를 JSON으로 바꾼 문자열이다."""
+    data = build_input(sentences, required_depts, queried_at)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(build_input(sentences, queried_at), ensure_ascii=False, indent=2)},
+        {"role": "user", "content": json.dumps(data, ensure_ascii=False, indent=2)},
     ]
 
 
@@ -183,28 +181,21 @@ def _remove_blocked(
 
     여러 병원에 같은 문장이 있으면 LLM에는 한 번만 넣는다. 후보에 메시지가 하나도 없으면 LLM을 호출하지 않는다.
     LLM 호출이 실패하면 메시지로 병원을 빼지 않는다. PRD F-13에 이 실패의 경고 코드가 없으므로 경고는 넣지 않는다.
-    LLM은 진료과를 고른 메시지만 출력하므로, 출력에 없는 메시지 번호의 문장은 어느 진료과도 막지 않는 것으로 본다.
+    LLM 출력에 있는 번호 중 입력에 없는 번호는 버린다.
     """
     sentences = list(dict.fromkeys(sentence for c in candidates for sentence in c.hospital.block_messages))
     if not sentences:
         return candidates
     result = llm_client.invoke(
-        build_messages(sentences, queried_at), BlockMessageJudgment, settings.block_message_timeout_seconds
+        build_messages(sentences, required_depts, queried_at),
+        BlockMessageJudgment,
+        settings.block_message_timeout_seconds,
     )
     if isinstance(result, LlmFailure):
         logger.warning("진료불가 메시지 판단 실패 reason=%s", result)
         return candidates
-    blocked = {
-        sentences[item.message_id - 1]: frozenset(item.blocked_depts)
-        for item in result.parsed.messages
-        if 1 <= item.message_id <= len(sentences)
-    }
-    no_block: frozenset[Department] = frozenset()
-    return [
-        candidate
-        for candidate in candidates
-        if not any(required_depts & blocked.get(sentence, no_block) for sentence in candidate.hospital.block_messages)
-    ]
+    blocked = {sentences[i - 1] for i in result.parsed.blocked_message_ids if 1 <= i <= len(sentences)}
+    return [candidate for candidate in candidates if blocked.isdisjoint(candidate.hospital.block_messages)]
 
 
 def _can_deliver(hospital: Hospital) -> bool:

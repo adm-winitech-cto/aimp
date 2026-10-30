@@ -19,7 +19,7 @@ from aimp.domain.hospital import (
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Department, PatientCategory, Resource, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
-from aimp.engines.capability import BlockedDepartments, BlockMessageJudgment, CandidateHospital
+from aimp.engines.capability import BlockMessageJudgment, CandidateHospital
 from aimp.ports.llm import LlmFailure, LlmOutput
 
 NO_BEDS = BedCount(available=None, total=None)
@@ -457,13 +457,9 @@ NS_BLOCKED = "[신경외과] 전문의 부재로 진료 불가"
 ER_FULL = "응급실 병상 포화"
 
 
-def _block_llm(*blocked_depts: tuple[Department, ...]) -> FakeLlmClient:
-    """메시지 번호 1, 2, ...에 blocked_depts를 차례로 내는 가짜 진료불가 메시지 판단 LLM."""
-    judgment = BlockMessageJudgment(
-        messages=tuple(
-            BlockedDepartments(message_id=i, blocked_depts=depts) for i, depts in enumerate(blocked_depts, start=1)
-        )
-    )
+def _block_llm(*blocked_message_ids: int) -> FakeLlmClient:
+    """blocked_message_ids 번호의 메시지가 필수 진료과를 막는다고 내는 가짜 진료불가 메시지 판단 LLM."""
+    judgment = BlockMessageJudgment(blocked_message_ids=blocked_message_ids)
     return FakeLlmClient(LlmOutput(parsed=judgment, raw=judgment.model_dump_json()))
 
 
@@ -476,10 +472,10 @@ def _filter_with_block_llm(
     return candidates
 
 
-def _sent_texts(llm_client: FakeLlmClient) -> list[str]:
-    """가짜 LLM이 받은 user 메시지의 메시지 문장 목록."""
+def _sent_input(llm_client: FakeLlmClient) -> dict:
+    """가짜 LLM이 받은 user 메시지의 LLM 입력 객체."""
     (call,) = llm_client.calls
-    return [message["text"] for message in json.loads(call.messages[1]["content"])["messages"]]
+    return json.loads(call.messages[1]["content"])
 
 
 BLOCK_HOSPITALS = [
@@ -492,14 +488,19 @@ BLOCK_HOSPITALS = [
 
 
 def test_removes_hospitals_whose_block_message_blocks_required_dept():
-    """필수 진료과가 정형외과인 환자에게 LLM이 정형외과를 낸 메시지가 있는 병원은 빠지고, 신경외과나 빈 목록을 낸
-    메시지만 있는 병원과 메시지가 없는 병원은 남는지 확인한다. 여러 병원의 같은 문장은 LLM에 한 번만 넣는다."""
-    llm_client = _block_llm((Department.ORTHOPEDIC_SURGERY,), (Department.NEUROSURGERY,), ())
+    """필수 진료과가 정형외과인 환자에게 LLM이 고른 메시지(정형외과 불가)가 있는 병원은 빠지고, 고르지 않은
+    메시지(신경외과 불가, 응급실 포화)만 있는 병원과 메시지가 없는 병원은 남는지 확인한다.
+
+    LLM 입력에는 필수 진료과가 들어가고, 여러 병원의 같은 문장은 한 번만 들어간다. 입력에 없는 번호(99)는 버린다.
+    """
+    llm_client = _block_llm(1, 99)
 
     candidates = _filter_with_block_llm(BLOCK_HOSPITALS, NEEDS_ORTHO, llm_client)
 
     assert _ids(candidates) == ["NS_BLOCKED", "ER_FULL", "NO_MESSAGE"]
-    assert _sent_texts(llm_client) == [ORTHO_BLOCKED, NS_BLOCKED, ER_FULL]
+    sent = _sent_input(llm_client)
+    assert sent["required_depts"] == ["정형외과"]
+    assert [message["text"] for message in sent["messages"]] == [ORTHO_BLOCKED, NS_BLOCKED, ER_FULL]
     assert llm_client.calls[0].response_format is BlockMessageJudgment
     assert llm_client.calls[0].timeout == settings.block_message_timeout_seconds
 
@@ -543,10 +544,14 @@ def test_block_message_llm_not_called_when_remaining_candidates_have_no_message(
 
 
 def test_block_message_input_has_weekday():
-    """LLM 입력 객체의 조회 시각에 요일과 평일·주말 구분이 들어가고, 메시지 번호가 1부터 매겨지는지 확인한다."""
-    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], datetime(2026, 10, 30, 14, 5))
+    """LLM 입력 객체의 조회 시각에 요일과 평일·주말 구분이 들어가고, 필수 진료과가 열거형 정의 순서로 들어가고,
+    메시지 번호가 1부터 매겨지는지 확인한다."""
+    depts = frozenset({Department.ORTHOPEDIC_SURGERY, Department.INTERNAL_MEDICINE})
+
+    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], depts, datetime(2026, 10, 31, 14, 5))
 
     assert data == {
-        "queried_at": "2026-10-30(금, 평일) 14:05",
+        "queried_at": "2026-10-31(토, 주말) 14:05",
+        "required_depts": ["내과", "정형외과"],
         "messages": [{"message_id": 1, "text": ORTHO_BLOCKED}, {"message_id": 2, "text": ER_FULL}],
     }
