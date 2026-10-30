@@ -124,7 +124,8 @@ class Hospital:
         delivery_room: 병원 상세 availableFacilities[]의 hv42(분만실)의 available
         block_messages: 병원 상세 statusMessages, publicStatusMessages의 message. 병원이 쓴 자유 문장이라서 진료과를
             필드로 읽을 수 없다. 중증 메시지는 문장 앞에 중증질환 이름을 붙인다(예: "산부인과 응급(분만): 일시적 불가").
-            API는 차단 종료 시각(endDateTime)이 지난 메시지도 주고, 이 필드도 그 메시지를 거르지 않는다
+            API는 차단 종료 시각(endDateTime)이 지난 메시지도 주므로, 조회 시각이 차단 시작 시각(startDateTime)과
+            종료 시각 사이에 있는 메시지만 담는다
     """
 
     hospital_id: str

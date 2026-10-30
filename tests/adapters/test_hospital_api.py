@@ -261,7 +261,13 @@ def test_missing_resuscitation_room_and_update_time_are_none(api):
     assert hospital.beds_updated_at is None
 
 
-def _message(text: str, message_type: str = "응급", symptom: str = "응급실") -> dict:
+def _message(
+    text: str,
+    message_type: str = "응급",
+    symptom: str = "응급실",
+    start: str = "20000101000000",
+    end: str = "20991231235959",
+) -> dict:
     """병원 상세 statusMessages, publicStatusMessages의 원소 하나 (2026-10-30 개발서버 응답 형식)."""
     return {
         "id": "PUBLIC-1",
@@ -271,8 +277,8 @@ def _message(text: str, message_type: str = "응급", symptom: str = "응급실"
         "symptomTypeName": symptom,
         "displayYn": "차단",
         "displayMethod": "자동",
-        "startDateTime": "20261024000000",
-        "endDateTime": "20261031235900",
+        "startDateTime": start,
+        "endDateTime": end,
     }
 
 
@@ -302,6 +308,19 @@ def test_severe_disease_message_starts_with_disease_name(api):
         "산부인과 응급(분만): 불가능메세지등록",
         "산부인과 응급(산과수술): 불가능메세지등록",
     )
+
+
+def test_block_messages_skip_messages_outside_block_period(api):
+    """조회 시각이 차단 시작 시각과 종료 시각 사이에 있는 메시지만 담는지 확인한다."""
+    api.details["A1"]["publicStatusMessages"] = [
+        _message("CT 고장", end="20200101000000"),
+        _message("MRI 점검 예정", start="20990101000000"),
+        _message("전문의 부재"),
+    ]
+
+    [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
+
+    assert hospital.block_messages == ("전문의 부재",)
 
 
 def test_request_uses_location_radius_classes_and_auth_headers(api):
@@ -441,9 +460,20 @@ def _unknown_message_type(api):
     api.details["A1"]["publicStatusMessages"] = [_message("정형외과 수술 불가", message_type="공지")]
 
 
+def _unknown_block_time_format(api):
+    api.details["A1"]["publicStatusMessages"] = [_message("정형외과 수술 불가", end="2026-10-31 23:59:00")]
+
+
 @pytest.mark.parametrize(
     "mutate",
-    [_unknown_acceptance_value, _missing_detail_field, _unknown_room_type, _string_message, _unknown_message_type],
+    [
+        _unknown_acceptance_value,
+        _missing_detail_field,
+        _unknown_room_type,
+        _string_message,
+        _unknown_message_type,
+        _unknown_block_time_format,
+    ],
 )
 def test_unexpected_response_raises_lookup_error(api, mutate):
     """모르는 값이 오거나 필드가 빠지면 일부 병원을 빼지 않고 HospitalLookupError를 내는지 확인한다."""

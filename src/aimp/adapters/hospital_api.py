@@ -12,7 +12,7 @@ import logging
 import os
 from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +33,8 @@ from aimp.domain.types import HospitalCategory
 from aimp.ports.hospital_repository import HospitalLookupError
 
 logger = logging.getLogger(__name__)
+
+KST = timezone(timedelta(hours=9))  # 진료불가 메시지의 차단 시작·종료 시각은 KST다
 
 # 응급실 목록의 emergencyClasses 검색 조건 값. API에는 권역외상센터 분류가 없다.
 _EMERGENCY_CLASSES = {
@@ -136,8 +138,11 @@ class HospitalApiRepository:
 
         with ThreadPoolExecutor(max_workers=self._max_concurrency) as pool:
             details = list(pool.map(lambda room: self._get(f"/{room['id']}", location), rooms))
+        now = datetime.now(KST).replace(tzinfo=None)
         try:
-            hospitals = [_to_hospital(room, detail, self._trauma_center_ids) for room, detail in zip(rooms, details)]
+            hospitals = [
+                _to_hospital(room, detail, self._trauma_center_ids, now) for room, detail in zip(rooms, details)
+            ]
             hospitals.sort(key=lambda hospital: hospital.distance_km)
         except (KeyError, TypeError, ValueError) as e:
             raise HospitalLookupError("병원정보 검색 API 응답 형식이 예상과 다릅니다") from e
@@ -180,8 +185,10 @@ class HospitalApiRepository:
         return body["data"]
 
 
-def _to_hospital(room: dict[str, Any], detail: dict[str, Any], trauma_center_ids: frozenset[str]) -> Hospital:
-    """응급실 목록의 항목 하나와 그 병원의 병원 상세를 Hospital로 바꾼다."""
+def _to_hospital(
+    room: dict[str, Any], detail: dict[str, Any], trauma_center_ids: frozenset[str], now: datetime
+) -> Hospital:
+    """응급실 목록의 항목 하나와 그 병원의 병원 상세를 Hospital로 바꾼다. now는 조회 시각(KST)이다."""
     beds = {b["key"]: BedCount(available=b["availableCount"], total=b["totalCount"]) for b in detail["availableBeds"]}
     equipment = {e["key"]: e["available"] for e in detail["availableEquipment"]}
     facilities = {f["key"]: f["available"] for f in detail["availableFacilities"]}
@@ -218,24 +225,29 @@ def _to_hospital(room: dict[str, Any], detail: dict[str, Any], trauma_center_ids
         },
         equipment={t: equipment.get(key) for t, key in _EQUIPMENT_KEYS.items()},
         delivery_room=facilities.get(_DELIVERY_ROOM_KEY),
-        block_messages=_block_messages(detail["statusMessages"] + detail["publicStatusMessages"]),
+        block_messages=_block_messages(detail["statusMessages"] + detail["publicStatusMessages"], now),
     )
 
 
-def _block_messages(messages: list[dict[str, Any]]) -> tuple[str, ...]:
+def _block_messages(messages: list[dict[str, Any]], now: datetime) -> tuple[str, ...]:
     """진료불가 메시지의 문장(message)을 순서대로 모은다. 빈 문장은 빼고, 같은 문장은 한 번만 담는다.
+
+    API는 차단 종료 시각(endDateTime)이 지난 메시지도 주므로, 조회 시각 now가 차단 시작 시각(startDateTime)과 종료
+    시각 사이에 있는 메시지만 담는다. displayYn(실측 값은 모두 '차단')은 뜻을 확인하지 못해 거르지 않는다.
 
     중증 메시지(messageType 중증)는 중증질환 하나에 대한 메시지라서 문장 앞에 중증질환 이름(symptomTypeName)을
     붙인다. 병원이 사유 없이 '불가능메세지등록'만 등록한 메시지가 많아서, 이름이 없으면 어느 질환이 불가인지 알 수
-    없다. 응급 메시지(messageType 응급)는 응급실 전체에 대한 메시지라서 문장만 담는다. messageType이 둘 다 아니면
-    ValueError를 낸다. 원소 형식은 2026-10-30 개발서버 응답으로 확인했다.
+    없다. 응급 메시지(messageType 응급)는 응급실 전체에 대한 메시지라서 문장만 담는다. messageType이 둘 다 아니거나
+    시각이 YYYYMMDDHHMMSS 형식이 아니면 ValueError를 낸다. 원소 형식은 2026-10-30 개발서버 응답으로 확인했다.
     """
     sentences = []
     for message in messages:
         if message["messageType"] not in ("응급", "중증"):
             raise ValueError(f"모르는 진료불가 메시지 구분입니다: {message['messageType']!r}")
+        start = datetime.strptime(message["startDateTime"], "%Y%m%d%H%M%S")
+        end = datetime.strptime(message["endDateTime"], "%Y%m%d%H%M%S")
         sentence = message["message"].strip()
-        if not sentence:
+        if not sentence or not start <= now <= end:
             continue
         if message["messageType"] == "중증":
             sentence = f"{message['symptomTypeName']}: {sentence}"
