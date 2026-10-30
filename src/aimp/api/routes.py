@@ -1,6 +1,5 @@
 """병원 추천 API 라우트."""
 
-import random
 from functools import cache
 from typing import Annotated
 
@@ -9,7 +8,9 @@ from fastapi import APIRouter, Depends
 from aimp import pipeline
 from aimp.api.request import RecommendRequest
 from aimp.api.response import Recommendation, RecommendResponse
+from aimp.adapters.hospital_api import HospitalApiRepository
 from aimp.adapters.vllm import VllmClient
+from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
 
 RECOMMEND_PATH = "/api/v1/recHosp"
@@ -22,8 +23,9 @@ def get_llm_client() -> LlmClient:
     return VllmClient()
 
 
-def get_rng() -> random.Random:
-    return random.Random()
+@cache
+def get_hospital_repository() -> HospitalRepository:
+    return HospitalApiRepository()
 
 
 @router.get("/healthz")
@@ -36,9 +38,9 @@ def healthz() -> dict[str, str]:
 def recommend(
     body: RecommendRequest,
     llm_client: Annotated[LlmClient, Depends(get_llm_client)],
-    rng: Annotated[random.Random, Depends(get_rng)],
+    hospital_repository: Annotated[HospitalRepository, Depends(get_hospital_repository)],
 ) -> RecommendResponse:
-    result = pipeline.run(body, llm_client, rng)
+    result = pipeline.run(body, llm_client, hospital_repository)
     return RecommendResponse(
         incident_id=body.incident_id,
         request_seq=body.request_seq,
