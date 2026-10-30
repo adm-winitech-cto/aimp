@@ -16,7 +16,7 @@ import pytest
 
 from aimp.adapters.tmap_eta import KST, TmapEtaProvider
 from aimp.domain.hospital import BedCount, CongestionStatus, Hospital
-from aimp.ports.eta_provider import EtaMethod
+from aimp.domain.eta import EtaMethod
 
 LONGITUDE, LATITUDE = 128.5478, 35.8399
 NO_BEDS = BedCount(available=None, total=None)

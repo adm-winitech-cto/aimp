@@ -15,7 +15,8 @@ import requests
 
 from aimp.common.settings import settings
 from aimp.domain.hospital import Hospital
-from aimp.ports.eta_provider import Eta, EtaMethod, straight_line_eta
+from aimp.domain.eta import Eta, EtaMethod
+from aimp.ports.eta_provider import straight_line_eta
 
 logger = logging.getLogger(__name__)
 
