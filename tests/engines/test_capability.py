@@ -1,8 +1,11 @@
 """진료 역량 규칙 엔진(C) 테스트. PRD_v0.1.md F-13 '진료 역량 규칙 엔진'의 조건과 병상 신선도 태그를 확인한다."""
 
+import json
+import logging
 from datetime import datetime, timedelta
 
 import pytest
+from fake_llm import FakeLlmClient
 
 from aimp.common.settings import settings
 from aimp.domain.hospital import (
@@ -16,13 +19,24 @@ from aimp.domain.hospital import (
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Department, PatientCategory, Resource, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
-from aimp.engines.capability import CandidateHospital
+from aimp.engines.capability import BlockingMessage, BlockMessageJudgment, CandidateHospital, TimeWindow, Weekday
+from aimp.ports.llm import LlmFailure, LlmOutput
 
 NO_BEDS = BedCount(available=None, total=None)
 QUERIED_AT = datetime(2026, 10, 30, 14, 0, 0)  # 조회 시각. 시간대 정보 없는 KST
 FRESH = QUERIED_AT - timedelta(minutes=5)  # 임계치(15분) 안의 갱신 시각
 STALE = QUERIED_AT - timedelta(minutes=settings.bed_data_max_age_minutes + 1)
 NOT_SEVERE = SevereJudgment(severe_type=None, category=None, required_resources=frozenset())
+
+
+class _NoCallLlm:
+    """진료불가 메시지 판단 LLM을 호출하지 않아야 하는 테스트에 쓰는 LlmClient. 호출하면 테스트가 실패한다."""
+
+    def invoke(self, messages, response_format, timeout):
+        raise AssertionError("진료불가 메시지 판단 LLM을 호출했다")
+
+
+NO_LLM = _NoCallLlm()
 
 
 def _hospital(
@@ -33,6 +47,7 @@ def _hospital(
     disease_acceptance: dict[str, AcceptanceStatus] | None = None,
     departments: frozenset[Department] = frozenset(),
     delivery_room: bool | None = None,
+    block_messages: tuple[str, ...] = (),
 ) -> Hospital:
     """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다.
 
@@ -59,14 +74,14 @@ def _hospital(
         },
         equipment={},
         delivery_room=delivery_room,
-        block_messages=(),
+        block_messages=block_messages,
     )
 
 
 def _filter(
     hospitals: list[Hospital], category: PatientCategory = PatientCategory.MINOR_TRAUMA
 ) -> tuple[list[CandidateHospital], list[WarningCode]]:
-    return capability.filter_candidates(hospitals, NOT_SEVERE, None, category, QUERIED_AT)
+    return capability.filter_candidates(hospitals, NOT_SEVERE, None, category, QUERIED_AT, NO_LLM)
 
 
 def _ids(candidates: list[CandidateHospital]) -> list[str]:
@@ -191,7 +206,9 @@ def _assessment(
 def _filter_with_assessment(
     hospitals: list[Hospital], assessment: PatientAssessment | None
 ) -> tuple[list[CandidateHospital], list[WarningCode]]:
-    return capability.filter_candidates(hospitals, NOT_SEVERE, assessment, PatientCategory.SEVERE_NON_TRAUMA, QUERIED_AT)
+    return capability.filter_candidates(
+        hospitals, NOT_SEVERE, assessment, PatientCategory.SEVERE_NON_TRAUMA, QUERIED_AT, NO_LLM
+    )
 
 
 STROKE = SevereDiseaseCode.MKIOSKTY2  # [재관류중재술] 뇌경색
@@ -284,7 +301,7 @@ def test_cardiac_arrest_skips_required_dept_condition():
     hospital = _hospital("NONE")
 
     candidates, _ = capability.filter_candidates(
-        [hospital], NOT_SEVERE, NEEDS_ORTHO, PatientCategory.CARDIAC_ARREST, QUERIED_AT
+        [hospital], NOT_SEVERE, NEEDS_ORTHO, PatientCategory.CARDIAC_ARREST, QUERIED_AT, NO_LLM
     )
 
     assert _ids(candidates) == ["NONE"]
@@ -297,7 +314,7 @@ def _filter_with_resources(
     assessment: PatientAssessment | None = None,
 ) -> list[CandidateHospital]:
     judgment = SevereJudgment(severe_type=None, category=None, required_resources=frozenset(resources))
-    candidates, _ = capability.filter_candidates(hospitals, judgment, assessment, category, QUERIED_AT)
+    candidates, _ = capability.filter_candidates(hospitals, judgment, assessment, category, QUERIED_AT, NO_LLM)
     return candidates
 
 
@@ -433,3 +450,154 @@ def test_resource_conditions_apply_regardless_of_assessment(assessment):
     candidates = _filter_with_resources(hospitals, resources, assessment=assessment)
 
     assert _delivery_tags(candidates) == {"PEDIATRICS_DELIVERY": True}
+
+
+ORTHO_BLOCKED = "[정형외과] 응급수술 불가"
+NS_BLOCKED = "[신경외과] 전문의 부재로 진료 불가"
+ER_FULL = "응급실 병상 포화"
+
+
+def _block_llm(*blocking_messages: BlockingMessage | int) -> FakeLlmClient:
+    """blocking_messages를 내는 가짜 진료불가 메시지 판단 LLM. 정수는 시간대 없이 항상 막는 메시지의 번호다."""
+    judgment = BlockMessageJudgment(
+        blocking_messages=tuple(
+            BlockingMessage(message_id=m, when="항상", windows=()) if isinstance(m, int) else m
+            for m in blocking_messages
+        )
+    )
+    return FakeLlmClient(LlmOutput(parsed=judgment, raw=judgment.model_dump_json()))
+
+
+def _filter_with_block_llm(
+    hospitals: list[Hospital], assessment: PatientAssessment | None, llm_client
+) -> list[CandidateHospital]:
+    candidates, _ = capability.filter_candidates(
+        hospitals, NOT_SEVERE, assessment, PatientCategory.MINOR_TRAUMA, QUERIED_AT, llm_client
+    )
+    return candidates
+
+
+def _sent_input(llm_client: FakeLlmClient) -> dict:
+    """가짜 LLM이 받은 user 메시지의 LLM 입력 객체."""
+    (call,) = llm_client.calls
+    return json.loads(call.messages[1]["content"])
+
+
+BLOCK_HOSPITALS = [
+    _hospital("ORTHO_BLOCKED", departments=ORTHO, block_messages=(ORTHO_BLOCKED,)),
+    _hospital("NS_BLOCKED", departments=ORTHO, block_messages=(NS_BLOCKED,)),
+    _hospital("ER_FULL", departments=ORTHO, block_messages=(ER_FULL,)),
+    _hospital("NO_MESSAGE", departments=ORTHO),
+    _hospital("SAME_SENTENCE", departments=ORTHO, block_messages=(ER_FULL, ORTHO_BLOCKED)),
+]
+
+
+def test_removes_hospitals_whose_block_message_blocks_required_dept():
+    """필수 진료과가 정형외과인 환자에게 LLM이 고른 메시지(정형외과 불가)가 있는 병원은 빠지고, 고르지 않은
+    메시지(신경외과 불가, 응급실 포화)만 있는 병원과 메시지가 없는 병원은 남는지 확인한다.
+
+    LLM 입력에는 필수 진료과가 들어가고, 여러 병원의 같은 문장은 한 번만 들어간다. 입력에 없는 번호(99)는 버린다.
+    """
+    llm_client = _block_llm(1, 99)
+
+    candidates = _filter_with_block_llm(BLOCK_HOSPITALS, NEEDS_ORTHO, llm_client)
+
+    assert _ids(candidates) == ["NS_BLOCKED", "ER_FULL", "NO_MESSAGE"]
+    sent = _sent_input(llm_client)
+    assert sent["required_depts"] == ["정형외과"]
+    assert [message["text"] for message in sent["messages"]] == [ORTHO_BLOCKED, NS_BLOCKED, ER_FULL]
+    assert llm_client.calls[0].response_format is BlockMessageJudgment
+    assert llm_client.calls[0].timeout == settings.block_message_timeout_seconds
+
+
+@pytest.mark.parametrize("failure", list(LlmFailure))
+def test_block_message_llm_failure_removes_no_hospital(failure, caplog):
+    """진료불가 메시지 판단 LLM이 실패하면 어떤 병원도 메시지로 빠지지 않고, 경고 없이 WARNING 로그만
+    남는지 확인한다."""
+    with caplog.at_level(logging.WARNING, logger=capability.__name__):
+        candidates, warnings = capability.filter_candidates(
+            BLOCK_HOSPITALS, NOT_SEVERE, NEEDS_ORTHO, PatientCategory.MINOR_TRAUMA, QUERIED_AT, FakeLlmClient(failure)
+        )
+
+    assert _ids(candidates) == [hospital.hospital_id for hospital in BLOCK_HOSPITALS]
+    assert warnings == []
+    assert f"진료불가 메시지 판단 실패 reason={failure}" in caplog.text
+
+
+@pytest.mark.parametrize("assessment", [None, _assessment()], ids=["assessment_none", "required_depts_empty"])
+def test_block_message_llm_not_called_without_required_depts(assessment):
+    """환자 상태 판단 결과가 None이거나 필수 진료과가 비어 있으면 LLM을 호출하지 않고, 메시지가 있는 병원도
+    남는지 확인한다."""
+    llm_client = _block_llm()
+
+    candidates = _filter_with_block_llm(BLOCK_HOSPITALS, assessment, llm_client)
+
+    assert llm_client.calls == []
+    assert len(candidates) == len(BLOCK_HOSPITALS)
+
+
+def test_block_message_llm_not_called_when_remaining_candidates_have_no_message():
+    """메시지가 있는 병원이 다른 조건(필수 진료과 없음)으로 빠지고 메시지가 없는 후보만 남으면 LLM을
+    호출하지 않는지 확인한다."""
+    llm_client = _block_llm()
+    hospitals = [_hospital("NO_ORTHO", block_messages=(ORTHO_BLOCKED,)), _hospital("NO_MESSAGE", departments=ORTHO)]
+
+    candidates = _filter_with_block_llm(hospitals, NEEDS_ORTHO, llm_client)
+
+    assert llm_client.calls == []
+    assert _ids(candidates) == ["NO_MESSAGE"]
+
+
+def test_block_message_input():
+    """LLM 입력 객체에 필수 진료과가 열거형 정의 순서로 들어가고, 메시지 번호가 1부터 매겨지고, 지금 시각은
+    들어가지 않는지 확인한다."""
+    depts = frozenset({Department.ORTHOPEDIC_SURGERY, Department.INTERNAL_MEDICINE})
+
+    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], depts)
+
+    assert data == {
+        "required_depts": ["내과", "정형외과"],
+        "messages": [{"message_id": 1, "text": ORTHO_BLOCKED}, {"message_id": 2, "text": ER_FULL}],
+    }
+
+
+WEEKDAYS_ONLY = (Weekday.MON, Weekday.TUE, Weekday.WED, Weekday.THU, Weekday.FRI)
+ALL_DAYS = tuple(Weekday)
+WEEKDAY_DAYTIME = BlockingMessage(  # "평일 9A~6P만 가능"
+    message_id=1, when="시간대 밖", windows=(TimeWindow(days=WEEKDAYS_ONLY, start="09:00", end="18:00"),)
+)
+NIGHT = BlockingMessage(  # "야간(18시~09시) 진료 불가"
+    message_id=1, when="시간대 안", windows=(TimeWindow(days=ALL_DAYS, start="18:00", end="09:00"),)
+)
+FRIDAY_NIGHT = BlockingMessage(  # "금요일 18시~09시 진료 불가"
+    message_id=1, when="시간대 안", windows=(TimeWindow(days=(Weekday.FRI,), start="18:00", end="09:00"),)
+)
+
+
+@pytest.mark.parametrize(
+    ("message", "at", "blocked"),
+    [
+        (BlockingMessage(message_id=1, when="항상", windows=()), datetime(2026, 10, 30, 10, 0), True),
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 16, 0), False),  # 금 16:00, 진료 가능 시간 안
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 9, 0), False),  # 시작 시각은 시간대에 들어간다
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 18, 0), True),  # 끝 시각은 시간대에 들어가지 않는다
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 31, 10, 0), True),  # 토요일
+        (NIGHT, datetime(2026, 10, 30, 16, 0), False),
+        (NIGHT, datetime(2026, 10, 30, 23, 0), True),
+        (NIGHT, datetime(2026, 10, 31, 8, 59), True),  # 자정을 넘긴 시간대
+        (FRIDAY_NIGHT, datetime(2026, 10, 31, 2, 0), True),  # 금요일 밤에 시작해 토요일 새벽까지
+        (FRIDAY_NIGHT, datetime(2026, 11, 1, 2, 0), False),  # 토요일 밤에는 시작하지 않는다
+    ],
+)
+def test_blocks_now(message, at, blocked):
+    """LLM이 옮긴 시간대로 지금 메시지가 필수 진료과를 막는지 판정하는지 확인한다."""
+    assert capability.blocks_now(message, at) is blocked
+
+
+def test_block_message_with_time_window_is_judged_at_queried_at():
+    """진료 가능 시간대만 적은 메시지는 조회 시각(금 14:00)이 그 시간대 안이면 병원을 빼지 않는지 확인한다."""
+    hospitals = [_hospital("WEEKDAY_DAYTIME", departments=ORTHO, block_messages=("[정형외과] 평일 9A~6P만 가능",))]
+
+    candidates = _filter_with_block_llm(hospitals, NEEDS_ORTHO, _block_llm(WEEKDAY_DAYTIME))
+
+    assert _ids(candidates) == ["WEEKDAY_DAYTIME"]

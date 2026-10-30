@@ -4,6 +4,7 @@ detour_threshold_km: 3.0  # X: 우회 판정 거리 기준 (임시값)
 bed_data_max_age_minutes: 15  # 병상 데이터 신선도 임계치 (PRD_v0.1.md F-13 '진료 역량 규칙 엔진'. 개발서버 실측 근거)
 require_icu_beds: false  # 중증 환자에게 중환자실 가용병상 조건 적용 여부 (임시값, 의료진 확인 필요)
 assessment_timeout_seconds: 3.0  # 환자 상태 판단 LLM 호출 제한 시간 (임시값)
+block_message_timeout_seconds: 3.0  # 진료불가 메시지 판단 LLM 호출 제한 시간 (임시값)
 llm_timeout_seconds: 5.0  # 최종 선정 LLM 호출 제한 시간 (PRD_v0.1.md F-08 '최종 선정'의 예시값)
 vllm_max_waiting_requests: 8  # vLLM 대기 요청 수가 이 값을 넘으면 LLM을 호출하지 않음 (임시값)
 
@@ -12,6 +13,7 @@ capability_engine_enabled: true  # 진료 역량 규칙 엔진
 
 # 프롬프트 버전
 assessment_prompt_version: patient_assessment_v1  # 환자 상태 판단 (classification/prompts/)
+block_message_prompt_version: block_message_v1  # 진료불가 메시지 판단 (engines/prompts/)
 prompt_version: final_selection_v1  # 최종 선정 (selection/prompts/)
 
 # vLLM 서버 주소
