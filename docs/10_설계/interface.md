@@ -108,7 +108,7 @@
 | `incidentId` | string | Y | - | 한 번 출동한 구급대가 이송하는 환자 한 명을 식별하는 ID (접수번호, 긴급구조번호 또는 구급보고서번호). 같은 환자에 대한 재추천 요청은 같은 값을 보냄 |
 | `requestSeq` | number | Y | - | 같은 `incidentId`의 요청 차수 (1 이상의 정수). 최초 요청은 `1`, 재추천마다 1씩 증가 |
 | `requestedAt` | string | Y | - | 요청 시각 (`yyyy-MM-dd HH:mm:ss`) |
-| `recommendCount` | number \| null | Y | - | 추천받을 병원 수 (1 이상의 정수). `null`이면 시스템은 기본값(10개)만큼 추천 |
+| `recommendCount` | number \| null | N | `null` | 추천받을 병원 수 (1 이상의 정수). `null`이면 시스템은 기본값(10개)만큼 추천 |
 | `patient` | object | Y | - | 환자 정보 |
 | `patient.info` | object | Y | - | 환자 기본 정보 |
 | `patient.info.age` | number | Y | - | 환자 나이 (세). 신원 미상 환자는 추정 나이를 입력. 시스템은 15세 미만이면 진료 역량 규칙 엔진에 '소아응급 진료 가능' 조건을 추가. 외상 환자가 55세 이상이거나 10세 이하이면 응답에 "직접의료지도 필요" 표시를 넣음 |

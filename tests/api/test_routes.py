@@ -12,7 +12,6 @@ REQUIRED_KEYS = [
     ("incidentId",),
     ("requestSeq",),
     ("requestedAt",),
-    ("recommendCount",),
     ("patient",),
     ("patient", "info"),
     ("patient", "info", "age"),

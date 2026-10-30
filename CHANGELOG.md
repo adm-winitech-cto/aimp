@@ -87,10 +87,9 @@
   응답에 연결하지 않았다.
 
 ### Changed
-- **병원 추천 요청의 필수 필드를 바꿨다**: `recommendCount`, `patient.info.sex`,
-  `patient.info.patientType`, `patient.chiefComplaint`, `patient.symptoms`,
-  `patient.preKtas.assessmentRound`는 필수가 되어, 키가 없으면 400을 반환한다. `recommendCount`는
-  값으로 `null`을 받고, `null`이면 기본값(10개)만큼 추천한다. 나머지 필드는 `null`을 받지 않는다.
+- **병원 추천 요청의 필수 필드를 바꿨다**: `patient.info.sex`, `patient.info.patientType`,
+  `patient.chiefComplaint`, `patient.symptoms`, `patient.preKtas.assessmentRound`는 필수가 되어,
+  키가 없거나 값이 `null`이면 400을 반환한다.
   `patient.consciousnessLevel`은 optional이 되고, 값이 없으면 의식상태를 중증외상 판정에 쓰지
   않는다(2026-10-30 결정).
 - **앱 패키지 이름이 `aimp`로 바뀌고 모듈을 PRD §4 코드 구조로 옮겼다**: 패키지 `transfer_recommender`를

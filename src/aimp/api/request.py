@@ -106,6 +106,6 @@ class RecommendRequest(_RequestModel):
     incident_id: str
     request_seq: int = Field(ge=1)
     requested_at: Timestamp
-    recommend_count: int | None = Field(ge=1)  # 키는 반드시 있어야 하고, 값이 null이면 설정의 recommend_count개를 추천한다.
+    recommend_count: int | None = Field(default=None, ge=1)
     patient: Patient
     rejected_hospitals: list[RejectedHospital] = []
