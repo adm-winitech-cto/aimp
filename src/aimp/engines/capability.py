@@ -51,7 +51,7 @@ _STROKE_TREATMENT_CODES = (SevereDiseaseCode.MKIOSKTY2, SevereDiseaseCode.MKIOSK
 
 # 특수 자원 → 병원이 그 자원을 갖췄는지 판정하는 조건. PRD_v0.1.md F-02 판정 규칙 표의 병원 데이터 열과 같아야 한다.
 # 분만은 병원을 거르지 않고 태그로 표시하므로 이 표에 넣지 않는다(_can_deliver).
-_RESOURCE_CONDITIONS: dict[Resource, Callable[[Hospital], bool]] = {
+RESOURCE_CONDITIONS: dict[Resource, Callable[[Hospital], bool]] = {
     # 셋 중 하나라도 Y
     Resource.STROKE_TREATMENT: lambda hospital: any(_accepts_disease(hospital, c) for c in _STROKE_TREATMENT_CODES),
     # mkioskty1(심근경색 재관류)이 Y
@@ -154,7 +154,7 @@ def filter_candidates(
     disease_code = assessment.severe_disease_code if assessment is not None else None
     required_depts = assessment.required_depts if assessment is not None else ()
     resources = severe_judgment.required_resources
-    resource_conditions = [condition for resource, condition in _RESOURCE_CONDITIONS.items() if resource in resources]
+    resource_conditions = [condition for resource, condition in RESOURCE_CONDITIONS.items() if resource in resources]
     needs_delivery = Resource.DELIVERY in resources
     candidates: list[CandidateHospital] = []
     for hospital in hospitals:

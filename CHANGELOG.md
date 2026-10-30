@@ -163,6 +163,15 @@
   요일로만 판정한다. LLM 호출이 실패하거나 제한 시간
   (`block_message_timeout_seconds`, 임시값 3초)을 넘기면 메시지로 병원을 빼지 않고, 경고 없이 WARNING 로그만
   남긴다. 필수 진료과가 있는 요청은 LLM을 두 번 호출하므로 응답 시간이 늘어난다(#67, 2026-10-30 결정).
+- **추천 사유는 LLM이 고른 템플릿에 시스템이 값을 채워 만든다**: 최종 선정 LLM이 사유 문장을 직접 쓰면 출력이
+  병원 수 × 사유 수만큼의 자유 문장이 되어 응답 시간이 늘고, 병상 수·거리 같은 숫자를 틀리게 쓸 수 있다. 진료불가
+  메시지 판단에서도 출력 길이가 응답 시간을 좌우했다. 그래서 최종 선정 LLM은 병원마다 템플릿 id(`grade`,
+  `required_dept`, `severe_disease`, `special_resource`, `er_beds`, `icu_beds`, `delivery`, `congestion`, `distance`,
+  `remark`)만 고르고, `selection/reasons.py`가 값을 채워 `, `로 이어 붙인다. Tmap ETA API로 구한 ETA는 마지막에
+  `도착 예정 {n}분`으로 붙인다. 최종 선정 fallback도 같은 템플릿(`grade`, `distance`, `er_beds`)으로 근거를 만들어
+  두 결과의 표현이 같다. 템플릿 목록은 코드의 `StrEnum`에 두고, 채울 값이 없는 템플릿은 검증 실패로 보지 않고 그
+  사유만 버린다. PRD F-08의 `reasons: [{type, ref, text}]`를 `reasons: [{template, quote}]`로 바꿨다. 아직 최종
+  선정과 최종 선정 fallback이 이 모듈을 쓰지 않아서 추천 사유는 바뀌지 않는다(#76, 2026-10-30 결정).
 
 ### Changed
 - **병원 추천 요청의 필수 필드를 바꿨다**: `patient.info.sex`, `patient.info.patientType`,
