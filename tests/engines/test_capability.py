@@ -14,7 +14,7 @@ from aimp.domain.hospital import (
     IcuBedType,
 )
 from aimp.domain.patient import PatientAssessment, SevereJudgment
-from aimp.domain.types import Department, PatientCategory, SevereDiseaseCode, WarningCode
+from aimp.domain.types import Department, PatientCategory, Resource, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
 from aimp.engines.capability import CandidateHospital
 
@@ -32,6 +32,7 @@ def _hospital(
     beds_updated_at: datetime | None = FRESH,
     disease_acceptance: dict[str, AcceptanceStatus] | None = None,
     departments: frozenset[Department] = frozenset(),
+    delivery_room: bool | None = None,
 ) -> Hospital:
     """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다.
 
@@ -57,7 +58,7 @@ def _hospital(
             code: DiseaseAcceptance(status, restriction=None) for code, status in (disease_acceptance or {}).items()
         },
         equipment={},
-        delivery_room=None,
+        delivery_room=delivery_room,
         block_messages=(),
     )
 
@@ -287,3 +288,148 @@ def test_cardiac_arrest_skips_required_dept_condition():
     )
 
     assert _ids(candidates) == ["NONE"]
+
+
+def _filter_with_resources(
+    hospitals: list[Hospital],
+    resources: set[Resource],
+    category: PatientCategory = PatientCategory.MINOR_NON_TRAUMA,
+    assessment: PatientAssessment | None = None,
+) -> list[CandidateHospital]:
+    judgment = SevereJudgment(severe_type=None, category=None, required_resources=frozenset(resources))
+    candidates, _ = capability.filter_candidates(hospitals, judgment, assessment, category, QUERIED_AT)
+    return candidates
+
+
+Y = AcceptanceStatus.AVAILABLE
+UNAVAILABLE = AcceptanceStatus.UNAVAILABLE
+NOT_PROVIDED = AcceptanceStatus.NOT_PROVIDED
+MI = SevereDiseaseCode.MKIOSKTY1  # [재관류중재술] 심근경색
+DELIVERY = SevereDiseaseCode.MKIOSKTY16  # [산부인과응급] 분만
+PEDIATRICS = frozenset({Department.PEDIATRICS})
+STROKE_CODES = (SevereDiseaseCode.MKIOSKTY2, SevereDiseaseCode.MKIOSKTY3, SevereDiseaseCode.MKIOSKTY4)
+
+
+@pytest.mark.parametrize(
+    ("resource", "hospitals", "expected"),
+    [
+        (
+            Resource.STROKE_TREATMENT,
+            [
+                _hospital("MKIOSKTY2_Y", disease_acceptance={SevereDiseaseCode.MKIOSKTY2: Y}),
+                _hospital("MKIOSKTY3_Y", disease_acceptance={SevereDiseaseCode.MKIOSKTY3: Y}),
+                _hospital("MKIOSKTY4_Y", disease_acceptance={STROKE: UNAVAILABLE, SevereDiseaseCode.MKIOSKTY4: Y}),
+                _hospital("UNAVAILABLE", disease_acceptance=dict.fromkeys(STROKE_CODES, UNAVAILABLE)),
+                _hospital("NOT_PROVIDED", disease_acceptance=dict.fromkeys(STROKE_CODES, NOT_PROVIDED)),
+                _hospital("NO_KEY", disease_acceptance={MI: Y}),
+            ],
+            ["MKIOSKTY2_Y", "MKIOSKTY3_Y", "MKIOSKTY4_Y"],
+        ),
+        (
+            Resource.MI_REPERFUSION,
+            [
+                _hospital("Y", disease_acceptance={MI: Y}),
+                _hospital("UNAVAILABLE", disease_acceptance={MI: UNAVAILABLE}),
+                _hospital("NOT_PROVIDED", disease_acceptance={MI: NOT_PROVIDED}),
+                _hospital("NO_KEY", disease_acceptance={SevereDiseaseCode.MKIOSKTY2: Y}),
+            ],
+            ["Y"],
+        ),
+        (
+            Resource.PEDIATRIC_EMERGENCY,
+            [
+                _hospital("PEDIATRICS", departments=PEDIATRICS),
+                _hospital("NONE", departments=frozenset({Department.INTERNAL_MEDICINE})),
+                _hospital("STALE_NONE", beds_updated_at=STALE),
+            ],
+            ["PEDIATRICS"],
+        ),
+    ],
+    ids=["stroke", "mi", "pediatric"],
+)
+def test_removes_hospitals_without_required_resource(resource, hospitals, expected):
+    """특수 자원마다 PRD F-02 판정 규칙 표의 조건을 만족하는 병원만 남는지 확인한다.
+
+    수용가능 값이 불가능·정보미제공이거나 키가 없는 병원, 소아청소년과가 없는 병원은 빠진다.
+    소아청소년과가 없는 병원은 병상 정보 오래됨 태그가 붙어도 빠진다.
+    """
+    candidates = _filter_with_resources(hospitals, {resource})
+
+    assert _ids(candidates) == expected
+
+
+DELIVERY_HOSPITALS = [
+    _hospital("MKIOSKTY16_Y", disease_acceptance={DELIVERY: Y}),
+    _hospital("DELIVERY_ROOM", delivery_room=True),
+    _hospital("NEITHER", disease_acceptance={DELIVERY: UNAVAILABLE}, delivery_room=False),
+    _hospital("NO_DATA"),
+]
+
+
+def _delivery_tags(candidates: list[CandidateHospital]) -> dict[str, bool]:
+    return {candidate.hospital.hospital_id: candidate.can_deliver for candidate in candidates}
+
+
+def test_delivery_resource_tags_without_filtering():
+    """분만 자원이 붙은 환자에게 mkioskty16이 Y인 병원과 분만실이 가용인 병원에는 "분만 가능" 태그가 붙고,
+    둘 다 아닌 병원은 태그 없이 후보에 남는지 확인한다."""
+    candidates = _filter_with_resources(DELIVERY_HOSPITALS, {Resource.DELIVERY})
+
+    expected = {"MKIOSKTY16_Y": True, "DELIVERY_ROOM": True, "NEITHER": False, "NO_DATA": False}
+    assert _delivery_tags(candidates) == expected
+
+
+def test_no_delivery_tag_without_delivery_resource():
+    """분만 자원이 없는 환자에게는 분만이 가능한 병원에도 "분만 가능" 태그가 붙지 않는지 확인한다."""
+    candidates = _filter_with_resources(DELIVERY_HOSPITALS, set())
+
+    assert not any(candidate.can_deliver for candidate in candidates)
+
+
+def test_pediatric_and_delivery_resources():
+    """특수 자원이 소아 + 분만이면 소아청소년과가 있는 병원만 남고, 그중 분만이 가능한 병원에 태그가 붙는지 확인한다."""
+    hospitals = [
+        _hospital("PEDIATRICS_DELIVERY", departments=PEDIATRICS, delivery_room=True),
+        _hospital("PEDIATRICS", departments=PEDIATRICS),
+        _hospital("DELIVERY", disease_acceptance={DELIVERY: Y}),
+    ]
+
+    candidates = _filter_with_resources(hospitals, {Resource.PEDIATRIC_EMERGENCY, Resource.DELIVERY})
+
+    assert _delivery_tags(candidates) == {"PEDIATRICS_DELIVERY": True, "PEDIATRICS": False}
+
+
+def test_removes_hospitals_missing_one_of_two_resources():
+    """분만을 뺀 특수 자원이 둘이면 둘 다 갖춘 병원만 남는지 확인한다."""
+    hospitals = [
+        _hospital("BOTH", departments=PEDIATRICS, disease_acceptance={MI: Y}),
+        _hospital("PEDIATRICS", departments=PEDIATRICS),
+        _hospital("MI", disease_acceptance={MI: Y}),
+    ]
+
+    candidates = _filter_with_resources(hospitals, {Resource.PEDIATRIC_EMERGENCY, Resource.MI_REPERFUSION})
+
+    assert _ids(candidates) == ["BOTH"]
+
+
+def test_cardiac_arrest_skips_resource_conditions_and_tag():
+    """15세 미만이거나 임산부인 심폐정지 환자에게는 특수 자원 조건과 "분만 가능" 태그가 적용되지 않는지 확인한다."""
+    hospitals = [_hospital("NONE"), _hospital("DELIVERY_ROOM", delivery_room=True)]
+
+    candidates = _filter_with_resources(
+        hospitals, {Resource.PEDIATRIC_EMERGENCY, Resource.DELIVERY}, PatientCategory.CARDIAC_ARREST
+    )
+
+    assert _delivery_tags(candidates) == {"NONE": False, "DELIVERY_ROOM": False}
+
+
+@pytest.mark.parametrize("assessment", [None, _assessment()], ids=["assessment_none", "assessment_ok"])
+def test_resource_conditions_apply_regardless_of_assessment(assessment):
+    """환자 상태 판단 결과가 None이어도 특수 자원 조건과 "분만 가능" 태그가 적용되는지 확인한다."""
+    hospitals = [_hospital("NONE"), _hospital("PEDIATRICS_DELIVERY", departments=PEDIATRICS, delivery_room=True)]
+
+    resources = {Resource.PEDIATRIC_EMERGENCY, Resource.DELIVERY}
+
+    candidates = _filter_with_resources(hospitals, resources, assessment=assessment)
+
+    assert _delivery_tags(candidates) == {"PEDIATRICS_DELIVERY": True}
