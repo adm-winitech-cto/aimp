@@ -68,8 +68,11 @@ def run(req: RecommendRequest, llm_client: LlmClient, hospital_repository: Hospi
             level = condition.level
             break
 
+    # C: 도착시간·거리 규칙 엔진. 직선거리가 가까운 후보 병원 M개(llm_candidate_count)만 남긴다
+    candidates = travel.nearest(candidates)
+
     # E 자리: 최종 선정 fallback(#19)을 붙이기 전까지 직선거리가 가까운 병원 N개를 추천한다.
-    picked = travel.nearest(candidates, req.recommend_count or settings.recommend_count)
+    picked = candidates[: req.recommend_count or settings.recommend_count]
     return PipelineResult(
         recommendations=tuple(
             RecommendedHospital(hospital_id=h.hospital_id, hospital_name=h.name, reason=f"직선거리 {h.distance_km:.1f}km")

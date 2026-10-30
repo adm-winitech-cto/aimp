@@ -204,6 +204,19 @@ def test_nearest_n_candidates_are_recommended(example_request, example_patient, 
     assert result.recommendations[0].reason == "직선거리 9.0km"
 
 
+def test_recommendations_come_from_nearest_m_candidates(example_request, example_patient):
+    """레벨 조건을 통과한 후보 병원이 M개(llm_candidate_count)보다 많으면, recommendCount가 M보다 커도
+    직선거리가 가까운 M개 안에서만 추천하는지 확인한다."""
+    m = settings.llm_candidate_count
+    example_patient["majorSevereType"] = "심근경색"
+    example_request["recommendCount"] = m + 5
+    repository = FakeHospitalRepository([make_hospital(f"H{i:02}", float(i + 1), REC) for i in range(m + 5)])
+
+    result = _run(example_request, hospital_repository=repository)
+
+    assert _ids(result) == [f"H{i:02}" for i in range(m)]
+
+
 def test_no_candidates_returns_200_with_empty_recommendations(client, example_request, hospital_repository):
     """L1 조건으로도 후보 병원이 0곳인 요청에 200과 빈 recommendations를 반환하는지 확인한다."""
     hospital_repository.hospitals = []
