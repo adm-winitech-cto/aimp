@@ -222,12 +222,22 @@ def _to_hospital(room: dict[str, Any], detail: dict[str, Any], trauma_center_ids
     )
 
 
-def _block_messages(messages: list[Any]) -> tuple[str, ...]:
-    """진료불가 메시지 문장을 순서대로 모은다. 빈 문장은 빼고, 같은 문장은 한 번만 담는다.
+def _block_messages(messages: list[dict[str, Any]]) -> tuple[str, ...]:
+    """진료불가 메시지의 문장(message)을 순서대로 모은다. 빈 문장은 빼고, 같은 문장은 한 번만 담는다.
 
-    원소가 문자열이 아니면 ValueError를 낸다. 개발서버에 메시지가 있는 병원이 없어서, 원소가 자연어 문장이라는 것은
-    제공처 답변으로만 확인했다.
+    중증 메시지(messageType 중증)는 중증질환 하나에 대한 메시지라서 문장 앞에 중증질환 이름(symptomTypeName)을
+    붙인다. 병원이 사유 없이 '불가능메세지등록'만 등록한 메시지가 많아서, 이름이 없으면 어느 질환이 불가인지 알 수
+    없다. 응급 메시지(messageType 응급)는 응급실 전체에 대한 메시지라서 문장만 담는다. messageType이 둘 다 아니면
+    ValueError를 낸다. 원소 형식은 2026-10-30 개발서버 응답으로 확인했다.
     """
-    if not all(isinstance(message, str) for message in messages):
-        raise ValueError(f"진료불가 메시지의 원소가 문자열이 아닙니다: {messages!r}")
-    return tuple(dict.fromkeys(message.strip() for message in messages if message.strip()))
+    sentences = []
+    for message in messages:
+        if message["messageType"] not in ("응급", "중증"):
+            raise ValueError(f"모르는 진료불가 메시지 구분입니다: {message['messageType']!r}")
+        sentence = message["message"].strip()
+        if not sentence:
+            continue
+        if message["messageType"] == "중증":
+            sentence = f"{message['symptomTypeName']}: {sentence}"
+        sentences.append(sentence)
+    return tuple(dict.fromkeys(sentences))

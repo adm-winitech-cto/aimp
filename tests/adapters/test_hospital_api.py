@@ -261,14 +261,47 @@ def test_missing_resuscitation_room_and_update_time_are_none(api):
     assert hospital.beds_updated_at is None
 
 
+def _message(text: str, message_type: str = "응급", symptom: str = "응급실") -> dict:
+    """병원 상세 statusMessages, publicStatusMessages의 원소 하나 (2026-10-30 개발서버 응답 형식)."""
+    return {
+        "id": "PUBLIC-1",
+        "message": text,
+        "messageType": message_type,
+        "symptomTypeCode": "Y000",
+        "symptomTypeName": symptom,
+        "displayYn": "차단",
+        "displayMethod": "자동",
+        "startDateTime": "20261024000000",
+        "endDateTime": "20261031235900",
+    }
+
+
 def test_block_messages_keep_sentences_from_both_fields(api):
     """두 메시지 필드의 문장을 순서대로 담고, 빈 문장은 빼고, 같은 문장은 한 번만 담는지 확인한다."""
-    api.details["A1"]["statusMessages"] = ["정형외과 수술 불가 (전문의 부재)", "  "]
-    api.details["A1"]["publicStatusMessages"] = ["CT 장비 점검 중", "정형외과 수술 불가 (전문의 부재)"]
+    api.details["A1"]["statusMessages"] = [_message("정형외과 수술 불가 (전문의 부재)"), _message("  ")]
+    api.details["A1"]["publicStatusMessages"] = [
+        _message("CT 장비 점검 중"),
+        _message("정형외과 수술 불가 (전문의 부재)"),
+    ]
 
     [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
 
     assert hospital.block_messages == ("정형외과 수술 불가 (전문의 부재)", "CT 장비 점검 중")
+
+
+def test_severe_disease_message_starts_with_disease_name(api):
+    """중증 메시지는 문장 앞에 중증질환 이름을 붙여, 같은 문장이라도 질환마다 따로 담는지 확인한다."""
+    api.details["A1"]["publicStatusMessages"] = [
+        _message("불가능메세지등록", "중증", "산부인과 응급(분만)"),
+        _message("불가능메세지등록", "중증", "산부인과 응급(산과수술)"),
+    ]
+
+    [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
+
+    assert hospital.block_messages == (
+        "산부인과 응급(분만): 불가능메세지등록",
+        "산부인과 응급(산과수술): 불가능메세지등록",
+    )
 
 
 def test_request_uses_location_radius_classes_and_auth_headers(api):
@@ -400,12 +433,17 @@ def _unknown_room_type(api):
     api.rooms[0]["type"] = "응급실운영신고기관"
 
 
-def _non_string_message(api):
-    api.details["A1"]["statusMessages"] = [{"messageContent": "정형외과 수술 불가"}]
+def _string_message(api):
+    api.details["A1"]["statusMessages"] = ["정형외과 수술 불가"]
+
+
+def _unknown_message_type(api):
+    api.details["A1"]["publicStatusMessages"] = [_message("정형외과 수술 불가", message_type="공지")]
 
 
 @pytest.mark.parametrize(
-    "mutate", [_unknown_acceptance_value, _missing_detail_field, _unknown_room_type, _non_string_message]
+    "mutate",
+    [_unknown_acceptance_value, _missing_detail_field, _unknown_room_type, _string_message, _unknown_message_type],
 )
 def test_unexpected_response_raises_lookup_error(api, mutate):
     """모르는 값이 오거나 필드가 빠지면 일부 병원을 빼지 않고 HospitalLookupError를 내는지 확인한다."""
