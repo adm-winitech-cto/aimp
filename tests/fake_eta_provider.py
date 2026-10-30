@@ -3,8 +3,9 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from aimp.domain.eta import Eta, EtaMethod
 from aimp.domain.hospital import Hospital
-from aimp.ports.eta_provider import Eta, EtaMethod, straight_line_eta
+from aimp.ports.eta_provider import straight_line_eta
 
 
 @dataclass

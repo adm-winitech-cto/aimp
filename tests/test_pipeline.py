@@ -10,9 +10,10 @@ from aimp.api.request import RecommendRequest
 from aimp.api.routes import RECOMMEND_PATH
 from aimp.classification import severity
 from aimp.common.settings import settings
+from aimp.domain.eta import EtaMethod
 from aimp.domain.patient import PatientAssessment
+from aimp.domain.recommendation import PipelineResult
 from aimp.domain.types import Department, HospitalCategory, Level, PatientCategory, Resource, WarningCode
-from aimp.ports.eta_provider import EtaMethod
 from aimp.ports.llm import LlmFailure, LlmOutput
 
 # 발등 개방성 골절 예시를 "외상, 정형외과 필수"로 판단한 환자 상태 판단 결과
@@ -40,7 +41,7 @@ def _run(
     llm_client: FakeLlmClient | None = None,
     hospital_repository: FakeHospitalRepository | None = None,
     eta_provider: FakeEtaProvider | None = None,
-) -> pipeline.PipelineResult:
+) -> PipelineResult:
     """llm_client를 주지 않으면 환자 상태 판단이 실패하고, hospital_repository를 주지 않으면 default_repository()를,
     eta_provider를 주지 않으면 모든 병원의 ETA를 구하는 FakeEtaProvider()를 쓴다."""
     return pipeline.run(
@@ -51,7 +52,7 @@ def _run(
     )
 
 
-def _ids(result: pipeline.PipelineResult) -> list[str]:
+def _ids(result: PipelineResult) -> list[str]:
     return [hospital.hospital_id for hospital in result.recommendations]
 
 

@@ -1,49 +1,20 @@
 """처리 흐름. PRD_v0.1.md §3 '처리 순서'대로 처리 단계를 호출하고, 각 단계가 낸 경고를 모은다.
 
-구현된 처리 단계를 하나씩 붙이는 중이다(#48). 아직 붙이지 않은 단계는 건너뛰고,
-최종 선정 fallback(#19)을 붙이기 전까지는 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
+아직 붙이지 않은 처리 단계: 진료 역량 규칙 엔진(#23), 최종 선정(#18), 최종 선정 fallback(#19).
+최종 선정 fallback을 붙이기 전까지는 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
 """
-
-from dataclasses import dataclass
 
 from aimp.api.request import RecommendRequest
 from aimp.classification import patient_assessment, severe_resource, severity
 from aimp.common.settings import settings
+from aimp.domain.eta import EtaMethod
 from aimp.domain.hospital import Hospital
-from aimp.domain.patient import PatientAssessment, SevereJudgment
-from aimp.domain.types import Level, PatientCategory, WarningCode
+from aimp.domain.recommendation import PipelineResult, RecommendedHospital
+from aimp.domain.types import Level, WarningCode
 from aimp.engines import guideline, travel
-from aimp.ports.eta_provider import Eta, EtaMethod, EtaProvider
+from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
-
-
-@dataclass(frozen=True)
-class RecommendedHospital:
-    """추천 병원 하나. 결과 객체의 추천 병원 목록에서 놓인 순서가 순위다."""
-
-    hospital_id: str
-    hospital_name: str
-    reason: str
-    eta: Eta  # Tmap ETA API로 구한 ETA. 실패하면 직선거리로 대신한다
-
-
-@dataclass(frozen=True)
-class PipelineResult:
-    """처리 흐름의 결과. api/가 응답 JSON으로 바꾼다."""
-
-    recommendations: tuple[RecommendedHospital, ...]  # 1순위부터. 후보 병원이 0곳이면 비어 있다
-    warnings: tuple[WarningCode, ...]
-    severe_judgment: SevereJudgment  # A0: 4대 중증 구분, 적용 규칙, 특수 자원
-    assessment: PatientAssessment | None  # A1: 환자 상태 판단 결과. LLM이 실패하면 None
-    category: PatientCategory  # 적용 규칙. 4대 중증이면 A0이, 아니면 A2가 정한다
-    special_situations: tuple[str, ...]  # 외상 환자의 특수상황 항목. 항목이 있으면 "직접의료지도 필요"
-    level: Level | None  # 후보 병원을 고른 레벨. L1 조건으로도 후보 병원이 0곳이면 None
-
-    @property
-    def medical_direction_needed(self) -> bool:
-        """L1 조건으로 후보 병원을 골랐으면 "의료지도 필요"."""
-        return self.level == Level.L1
 
 
 def run(
