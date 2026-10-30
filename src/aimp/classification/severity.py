@@ -41,7 +41,11 @@ def _physiological(patient: Patient, thresholds: dict[str, VitalThreshold]) -> t
         if value is not None:
             measured = True
             vital_signs_severe = vital_signs_severe or threshold.is_severe([value])
-    return vital_signs_severe or patient.consciousness_level not in RULES.normal_consciousness_levels, measured
+    # 의식상태 값이 없으면 의식 기준을 적용하지 않는다(interface.md '생략 시 처리').
+    consciousness_severe = (
+        patient.consciousness_level is not None and patient.consciousness_level not in RULES.normal_consciousness_levels
+    )
+    return vital_signs_severe or consciousness_severe, measured
 
 
 def judge(patient: Patient, assessment: PatientAssessment | None) -> PatientCategory:

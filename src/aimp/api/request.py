@@ -2,7 +2,7 @@
 
 검증 규칙:
 - 타입에 null이 있거나 '생략 시 처리'가 null인 필드만 null을 받는다.
-  그 밖의 필드(예: 생략 시 []인 `symptoms`, 생략 시 1인 `preKtas.assessmentRound`)에 null이 오면 검증에 실패한다.
+  그 밖의 필드(예: 필수인 `symptoms`, 생략 시 []인 `medicalHistory`)에 null이 오면 검증에 실패한다.
 - 숫자 필드는 JSON 숫자만 받는다. 불리언, 문자열(예: "65"), NaN, Infinity가 오면 검증에 실패한다.
 - 명세에 없는 키가 오면 검증에 실패한다. 키 이름에 오타가 나서 값이 기본값으로 바뀌는 것을 막는다.
 
@@ -41,12 +41,12 @@ class _RequestModel(BaseModel):
 
 class PatientInfo(_RequestModel):
     age: float = Field(ge=0)  # interface.md 타입이 number라 생후 6개월(0.5세) 같은 소수도 받는다.
-    sex: str | None = None
-    patient_type: str | None = None
+    sex: str
+    patient_type: str
 
 
 class PreKtas(_RequestModel):
-    assessment_round: int = Field(default=1, ge=1)
+    assessment_round: int = Field(ge=1)
     level: int = Field(ge=1, le=5)
     assessment_detail: str
 
@@ -82,9 +82,9 @@ class PatientLocation(_RequestModel):
 
 class Patient(_RequestModel):
     info: PatientInfo
-    chief_complaint: str | None = None
-    symptoms: list[str] = []
-    consciousness_level: str
+    chief_complaint: str
+    symptoms: list[str]
+    consciousness_level: str | None = None
     # strict 모드는 열거형 인스턴스만 받으므로, 이 필드만 strict를 꺼서 문자열 값을 열거형으로 바꾼다.
     major_severe_type: Annotated[SevereType, Strict(False)] | None = None
     pre_ktas: PreKtas
@@ -106,6 +106,6 @@ class RecommendRequest(_RequestModel):
     incident_id: str
     request_seq: int = Field(ge=1)
     requested_at: Timestamp
-    recommend_count: int | None = Field(default=None, ge=1)
+    recommend_count: int | None = Field(ge=1)  # 키는 반드시 있어야 하고, 값이 null이면 설정의 recommend_count개를 추천한다.
     patient: Patient
     rejected_hospitals: list[RejectedHospital] = []
