@@ -32,23 +32,16 @@ def test_omitted_optional_keys_use_defaults(example_request, example_patient):
     """optional 키를 생략하면 interface.md '생략 시 처리' 열의 기본값이 들어가는지 확인한다."""
     for key in ("recommendCount", "rejectedHospitals"):
         del example_request[key]
-    for key in ("chiefComplaint", "symptoms", "majorSevereType", "vitalSigns", "medicalHistory", "medications", "remark"):
+    for key in ("consciousnessLevel", "majorSevereType", "vitalSigns", "medicalHistory", "medications", "remark"):
         del example_patient[key]
-    del example_patient["info"]["sex"]
-    del example_patient["info"]["patientType"]
-    del example_patient["preKtas"]["assessmentRound"]
 
     req = RecommendRequest.model_validate(example_request)
     patient = req.patient
 
     assert req.recommend_count is None
     assert req.rejected_hospitals == []
-    assert patient.info.sex is None
-    assert patient.info.patient_type is None
-    assert patient.chief_complaint is None
-    assert patient.symptoms == []
+    assert patient.consciousness_level is None
     assert patient.major_severe_type is None
-    assert patient.pre_ktas.assessment_round == 1
     assert patient.vital_signs is None
     assert patient.medical_history == []
     assert patient.medications == []

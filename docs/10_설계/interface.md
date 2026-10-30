@@ -112,14 +112,14 @@
 | `patient` | object | Y | - | 환자 정보 |
 | `patient.info` | object | Y | - | 환자 기본 정보 |
 | `patient.info.age` | number | Y | - | 환자 나이 (세). 신원 미상 환자는 추정 나이를 입력. 시스템은 15세 미만이면 진료 역량 규칙 엔진에 '소아응급 진료 가능' 조건을 추가. 외상 환자가 55세 이상이거나 10세 이하이면 응답에 "직접의료지도 필요" 표시를 넣음 |
-| `patient.info.sex` | string | N | `null` | 환자 성별 (예: `남`) |
-| `patient.info.patientType` | string | N | `null` | 환자 유형 (예: `일반환자`) |
-| `patient.chiefComplaint` | string | N | `null` | 환자가 호소하는 주된 증상. 시스템은 이 값을 LLM 입력으로만 사용 |
-| `patient.symptoms` | string[] | N | `[]` | 증상 목록. 시스템은 이 값을 LLM 입력으로만 사용 |
-| `patient.consciousnessLevel` | string | Y | - | 환자 의식 수준 (예: `명료`). 시스템은 이 값으로 중증외상 여부를 판정 |
+| `patient.info.sex` | string | Y | - | 환자 성별 (예: `남`) |
+| `patient.info.patientType` | string | Y | - | 환자 유형 (예: `일반환자`) |
+| `patient.chiefComplaint` | string | Y | - | 환자가 호소하는 주된 증상. 시스템은 이 값을 LLM 입력으로만 사용 |
+| `patient.symptoms` | string[] | Y | - | 증상 목록. 증상이 없으면 `[]`. 시스템은 이 값을 LLM 입력으로만 사용 |
+| `patient.consciousnessLevel` | string | N | `null` | 환자 의식 수준 (예: `명료`). 시스템은 이 값으로 중증외상 여부를 판정. `null`이면 시스템은 의식상태를 중증외상 판정에 쓰지 않음 |
 | `patient.majorSevereType` | string \| null | N | `null` | 4대 중증 분류 (심정지, 중증외상, 뇌졸중, 심근경색). 해당 없으면 `null`. `null`이면 시스템은 Pre-KTAS로 환자를 분류. 이 4종이 아닌 값이 오면 시스템은 `400 Bad Request`를 반환 |
 | `patient.preKtas` | object | Y | - | Pre-KTAS(병원 전 단계 중증도 분류) 평가 결과 |
-| `patient.preKtas.assessmentRound` | number | N | `1` | Pre-KTAS 평가 차수 |
+| `patient.preKtas.assessmentRound` | number | Y | - | Pre-KTAS 평가 차수 |
 | `patient.preKtas.level` | number | Y | - | Pre-KTAS 단계 (1~5, 숫자가 작을수록 중증) |
 | `patient.preKtas.assessmentDetail` | string | Y | - | Pre-KTAS 평가 항목 문구 (`연령 구분 - 대분류 - 중분류 - 소분류` 형식). 시스템은 이 문구를 환자 상태 판단 LLM에 넣어 외상 여부, 필수 진료과, 중증외상 기준 항목을 판단 |
 | `patient.vitalSigns` | object \| null | N | `null` | 활력징후. `null`이면 시스템은 Pre-KTAS만으로 중증도를 판정하고 "활력징후 없음" 경고를 추가 |
@@ -153,8 +153,8 @@
 - 객체 구조: `patient.medications`의 원소, `patient.specialInfo.pregnancyInfo`, `patient.specialInfo.newbornInfo`
 - `recommendCount`의 상한
 - `patient.vitalSigns.measuredAt` 필드를 유지할지
-- 필수 여부 확인: 현장에서 `patient.info.age`와 `patient.consciousnessLevel`이 항상 입력되는지
-    - 비어서 오는 경우가 있으면 두 필드를 optional로 바꾸고, 시스템은 값이 없을 때 가장 중증인 판정을 적용합니다 (예: 나이가 없으면 '소아응급 진료 가능' 조건을 추가).
+- 필수 여부 확인: 현장에서 `patient.info.age`가 항상 입력되는지
+    - 비어서 오는 경우가 있으면 이 필드를 optional로 바꾸고, 시스템은 값이 없을 때 가장 중증인 판정을 적용합니다 (예: 나이가 없으면 '소아응급 진료 가능' 조건을 추가).
 
 ---
 

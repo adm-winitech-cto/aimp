@@ -93,6 +93,11 @@
   응답에 연결하지 않았다.
 
 ### Changed
+- **병원 추천 요청의 필수 필드를 바꿨다**: `patient.info.sex`, `patient.info.patientType`,
+  `patient.chiefComplaint`, `patient.symptoms`, `patient.preKtas.assessmentRound`는 필수가 되어,
+  키가 없거나 값이 `null`이면 400을 반환한다.
+  `patient.consciousnessLevel`은 optional이 되고, 값이 없으면 의식상태를 중증외상 판정에 쓰지
+  않는다(2026-10-30 결정).
 - **앱 패키지 이름이 `aimp`로 바뀌고 모듈을 PRD §4 코드 구조로 옮겼다**: 패키지 `transfer_recommender`를
   `src/aimp/`로 옮기고, 설정 읽기·로깅은 `common/`, 규칙 엔진은 `engines/`, LLM 호출 인터페이스와 병원
   조회 인터페이스는 `ports/`, vLLM 구현은 `adapters/`로 나눴다. 동작은 바뀌지 않았다. 앱 진입점이

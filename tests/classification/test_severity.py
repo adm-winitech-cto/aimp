@@ -84,6 +84,14 @@ def test_trauma_with_abnormal_consciousness_is_severe_trauma(example_patient):
     assert _judge(example_patient, TRAUMA) == PatientCategory.SEVERE_TRAUMA
 
 
+def test_trauma_without_consciousness_level_ignores_consciousness(example_patient):
+    """의식상태 값이 없으면 의식 기준을 적용하지 않아, 활력징후가 정상인 외상 환자가 경증외상인지 확인한다."""
+    example_patient["preKtas"]["level"] = 4
+    example_patient["consciousnessLevel"] = None
+
+    assert _judge(example_patient, TRAUMA) == PatientCategory.MINOR_TRAUMA
+
+
 @pytest.mark.parametrize("criterion", [TraumaCriterion.PELVIC_FRACTURE, TraumaCriterion.FALL])
 def test_injury_finding_or_mechanism_makes_severe_trauma(example_patient, criterion):
     """활력징후가 정상이어도 신체검사 소견이나 손상기전 항목이 있으면 중증외상이 되는지 확인한다."""
