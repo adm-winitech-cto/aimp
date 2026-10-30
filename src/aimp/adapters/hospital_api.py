@@ -4,12 +4,11 @@
 - API에 권역외상센터 분류가 없어서, 권역외상센터는 config/trauma_centers.yaml의 hpid 목록으로 정한다.
   권역외상센터는 시·도와 관계없이 가장 가까운 곳을 찾아야 하므로 반경 없이 전국 응급실 목록에서 고른다.
 - 중증질환 수용가능 여부와 진료과목은 병원 상세(/{id})에만 있으므로, 후보 병원마다 병원 상세를 병렬로 호출한다.
-- 인증 키는 환경 변수 HOSPITAL_API_CLIENT_ID, HOSPITAL_API_KEY에서 읽는다. 키를 설정 파일과 저장소에 넣지 않는다.
+- 인증 키는 제공처가 전달한 client.json을 config/client.json에 그대로 두고 읽는다. 이 파일은 저장소에 커밋하지 않는다(.gitignore).
 - API 응답 필드와 Hospital 필드의 대응은 domain/hospital.py의 docstring에 있다.
 """
 
 import logging
-import os
 from collections.abc import Collection
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -17,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from aimp.common.settings import CONFIG_DIR, load_yaml, settings
 from aimp.domain.hospital import (
@@ -85,6 +84,27 @@ def load_trauma_center_ids(path: Path) -> frozenset[str]:
 # 모듈을 import할 때 읽는다. 형식이 틀리면 import가 실패한다.
 TRAUMA_CENTER_IDS = load_trauma_center_ids(CONFIG_DIR / "trauma_centers.yaml")
 
+# 제공처가 전달한 인증 파일. 커밋하지 않는다.
+CREDENTIALS_PATH = CONFIG_DIR / "client.json"
+
+
+class _Credentials(BaseModel):
+    # 형식 오류 메시지에 키 값이 들어가 앱 시작 로그에 남지 않게 한다.
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    client_id: str = Field(alias="clientId", min_length=1)
+    api_key: str = Field(alias="apiKey", min_length=1)
+
+
+def load_credentials(path: Path) -> tuple[str, str]:
+    """인증 파일(client.json)을 읽어 (clientId, apiKey)를 반환한다. 파일이 없거나 형식이 틀리면 ValueError."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ValueError(f"병원정보 검색 API 인증 파일이 없습니다: {path}") from None
+    credentials = _Credentials.model_validate_json(text)
+    return credentials.client_id, credentials.api_key
+
 
 class HospitalApiRepository:
     """병원정보 검색 API로 병원을 조회하는 HospitalRepository 구현.
@@ -103,11 +123,10 @@ class HospitalApiRepository:
         trauma_center_ids: Collection[str] = TRAUMA_CENTER_IDS,
         client_id: str | None = None,
         api_key: str | None = None,
+        credentials_path: Path | None = None,
     ):
-        client_id = client_id or os.environ.get("HOSPITAL_API_CLIENT_ID")
-        api_key = api_key or os.environ.get("HOSPITAL_API_KEY")
-        if not client_id or not api_key:
-            raise ValueError("환경 변수 HOSPITAL_API_CLIENT_ID, HOSPITAL_API_KEY가 없습니다")
+        if client_id is None or api_key is None:
+            client_id, api_key = load_credentials(credentials_path or CREDENTIALS_PATH)
         self._url = url
         self._timeout = timeout
         self._max_concurrency = max_concurrency

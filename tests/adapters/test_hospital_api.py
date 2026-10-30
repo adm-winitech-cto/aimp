@@ -496,21 +496,32 @@ def test_unreachable_server_raises_lookup_error():
         repository.find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
 
 
-def test_missing_credentials_raise_value_error(monkeypatch):
-    """인증 키를 인자로 받지 않았고 환경 변수에도 없으면 ValueError를 내는지 확인한다."""
-    monkeypatch.delenv("HOSPITAL_API_CLIENT_ID", raising=False)
-    monkeypatch.delenv("HOSPITAL_API_KEY", raising=False)
-
-    with pytest.raises(ValueError, match="HOSPITAL_API_KEY"):
-        HospitalApiRepository(url="http://127.0.0.1:1")
+def test_missing_credentials_file_raises_value_error(tmp_path):
+    """인증 키를 인자로 받지 않았고 인증 파일(client.json)도 없으면 ValueError를 내는지 확인한다."""
+    with pytest.raises(ValueError, match="인증 파일이 없습니다"):
+        HospitalApiRepository(url="http://127.0.0.1:1", credentials_path=tmp_path / "client.json")
 
 
-def test_credentials_read_from_environment(api, monkeypatch):
-    """인증 키를 인자로 받지 않으면 환경 변수에서 읽는지 확인한다."""
-    monkeypatch.setenv("HOSPITAL_API_CLIENT_ID", "env-client")
-    monkeypatch.setenv("HOSPITAL_API_KEY", "env-key")
+@pytest.mark.parametrize(
+    "content",
+    ['{"clientId": "file-client"}', '{"clientId": "file-client", "apiKey": ""}', "not json"],
+    ids=["missing-api-key", "empty-api-key", "not-json"],
+)
+def test_invalid_credentials_file_raises_value_error(tmp_path, content):
+    """인증 파일에 apiKey가 없거나 비어 있거나 JSON이 아니면 ValueError를 내는지 확인한다."""
+    path = tmp_path / "client.json"
+    path.write_text(content, encoding="utf-8")
 
-    HospitalApiRepository(url=api.url).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
+    with pytest.raises(ValueError):
+        HospitalApiRepository(url="http://127.0.0.1:1", credentials_path=path)
+
+
+def test_credentials_read_from_file(api, tmp_path):
+    """인증 키를 인자로 받지 않으면 인증 파일(client.json)의 clientId, apiKey를 헤더에 넣는지 확인한다."""
+    path = tmp_path / "client.json"
+    path.write_text('{"clientId": "file-client", "apiKey": "file-key"}', encoding="utf-8")
+
+    HospitalApiRepository(url=api.url, credentials_path=path).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
 
     _, _, headers = api.requests[0]
-    assert (headers["X-GGFI-Client-Id"], headers["X-GGFI-API-Key"]) == ("env-client", "env-key")
+    assert (headers["X-GGFI-Client-Id"], headers["X-GGFI-API-Key"]) == ("file-client", "file-key")
