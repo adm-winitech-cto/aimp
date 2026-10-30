@@ -8,6 +8,8 @@ import random
 from dataclasses import dataclass
 
 from aimp.api.request import RecommendRequest
+from aimp.classification import severe_resource
+from aimp.domain.patient import SevereJudgment
 from aimp.domain.types import WarningCode
 from aimp.ports.llm import LlmClient
 from aimp.selection import static_selection
@@ -28,10 +30,14 @@ class PipelineResult:
 
     recommendations: tuple[RecommendedHospital, ...]  # 1순위부터
     warnings: tuple[WarningCode, ...]
+    severe_judgment: SevereJudgment  # A0: 4대 중증 구분, 적용 규칙, 특수 자원
 
 
 def run(req: RecommendRequest, llm_client: LlmClient, rng: random.Random) -> PipelineResult:
-    warnings: list[WarningCode] = []
+    warnings: list[WarningCode] = []  # 각 단계가 경고를 이 목록에 추가
+    if req.patient.vital_signs is None:  # 4대 중증 환자를 포함한 모든 환자
+        warnings.append(WarningCode.NO_VITAL_SIGNS)
+    severe_judgment = severe_resource.judge(req.patient)  # A0
     selected = static_selection.recommend(req, llm_client, rng)
     return PipelineResult(
         recommendations=tuple(
@@ -39,4 +45,5 @@ def run(req: RecommendRequest, llm_client: LlmClient, rng: random.Random) -> Pip
             for r in selected.recommendations
         ),
         warnings=tuple(warnings),
+        severe_judgment=severe_judgment,
     )
