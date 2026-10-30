@@ -114,7 +114,8 @@
   병원을 조회한다. L0 조건을 만족하는 병원이 없으면 L1 조건의 병원을 고른다. 최종 선정 fallback을
   붙이기 전까지는 후보 병원 중 직선거리가 가까운 병원 `recommendCount`개를 추천하고, 추천 근거에
   직선거리를 적는다. 도착시간·거리 규칙 엔진이 후보 병원을 직선거리가 가까운 M개(`llm_candidate_count`,
-  지금 15)로 줄이므로, `recommendCount`가 M보다 커도 추천 병원은 M개를 넘지 않는다. L1 조건으로도 후보 병원이 없으면 빈 `recommendations`를 반환하고, 병원 데이터
+  지금 15)로 줄이므로, `recommendCount`가 M보다 커도 추천 병원은 M개를 넘지 않는다. 추천 병원마다
+  Tmap ETA API를 호출해 ETA를 구하지만, 응답에는 아직 넣지 않는다. L1 조건으로도 후보 병원이 없으면 빈 `recommendations`를 반환하고, 병원 데이터
   조회가 실패하면 500을 반환한다. 운영 현장의 앱에는 환경 변수 `HOSPITAL_API_CLIENT_ID`,
   `HOSPITAL_API_KEY`가 있어야 한다. 평가셋이 아직 없어 F-12 '모델 평가'의 지표는 확인하지 않았다.
 

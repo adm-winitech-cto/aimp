@@ -13,6 +13,7 @@ from aimp.domain.hospital import Hospital
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Level, PatientCategory, WarningCode
 from aimp.engines import guideline, travel
+from aimp.ports.eta_provider import Eta, EtaMethod, EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
 
@@ -24,6 +25,7 @@ class RecommendedHospital:
     hospital_id: str
     hospital_name: str
     reason: str
+    eta: Eta  # Tmap ETA API로 구한 ETA. 실패하면 직선거리로 대신한다
 
 
 @dataclass(frozen=True)
@@ -44,7 +46,12 @@ class PipelineResult:
         return self.level == Level.L1
 
 
-def run(req: RecommendRequest, llm_client: LlmClient, hospital_repository: HospitalRepository) -> PipelineResult:
+def run(
+    req: RecommendRequest,
+    llm_client: LlmClient,
+    hospital_repository: HospitalRepository,
+    eta_provider: EtaProvider,
+) -> PipelineResult:
     warnings: list[WarningCode] = []  # 각 단계가 경고를 이 목록에 추가
     if req.patient.vital_signs is None:  # 4대 중증 환자를 포함한 모든 환자
         warnings.append(WarningCode.NO_VITAL_SIGNS)
@@ -73,10 +80,17 @@ def run(req: RecommendRequest, llm_client: LlmClient, hospital_repository: Hospi
 
     # E 자리: 최종 선정 fallback(#19)을 붙이기 전까지 직선거리가 가까운 병원 N개를 추천한다.
     picked = candidates[: req.recommend_count or settings.recommend_count]
+
+    # F: 선정된 N개에만 ETA를 구한다. 순위는 바꾸지 않는다
+    etas = eta_provider.estimate(location.longitude, location.latitude, picked) if picked else []
+    if any(eta.method == EtaMethod.STRAIGHT_LINE for eta in etas):
+        warnings.append(WarningCode.ETA_FAILED)
     return PipelineResult(
         recommendations=tuple(
-            RecommendedHospital(hospital_id=h.hospital_id, hospital_name=h.name, reason=f"직선거리 {h.distance_km:.1f}km")
-            for h in picked
+            RecommendedHospital(
+                hospital_id=h.hospital_id, hospital_name=h.name, reason=f"직선거리 {h.distance_km:.1f}km", eta=eta
+            )
+            for h, eta in zip(picked, etas, strict=True)
         ),
         warnings=tuple(warnings),
         severe_judgment=severe_judgment,

@@ -1,6 +1,7 @@
 """처리 흐름 테스트."""
 
 import pytest
+from fake_eta_provider import FakeEtaProvider
 from fake_hospital_repository import FakeHospitalRepository, default_repository, make_hospital
 from fake_llm import FakeLlmClient
 
@@ -11,6 +12,7 @@ from aimp.classification import severity
 from aimp.common.settings import settings
 from aimp.domain.patient import PatientAssessment
 from aimp.domain.types import Department, HospitalCategory, Level, PatientCategory, Resource, WarningCode
+from aimp.ports.eta_provider import EtaMethod
 from aimp.ports.llm import LlmFailure, LlmOutput
 
 # 발등 개방성 골절 예시를 "외상, 정형외과 필수"로 판단한 환자 상태 판단 결과
@@ -34,13 +36,18 @@ RTC = HospitalCategory.REGIONAL_TRAUMA_CENTER
 
 
 def _run(
-    body: dict, llm_client: FakeLlmClient | None = None, hospital_repository: FakeHospitalRepository | None = None
+    body: dict,
+    llm_client: FakeLlmClient | None = None,
+    hospital_repository: FakeHospitalRepository | None = None,
+    eta_provider: FakeEtaProvider | None = None,
 ) -> pipeline.PipelineResult:
-    """llm_client를 주지 않으면 환자 상태 판단이 실패하고, hospital_repository를 주지 않으면 default_repository()를 쓴다."""
+    """llm_client를 주지 않으면 환자 상태 판단이 실패하고, hospital_repository를 주지 않으면 default_repository()를,
+    eta_provider를 주지 않으면 모든 병원의 ETA를 구하는 FakeEtaProvider()를 쓴다."""
     return pipeline.run(
         RecommendRequest.model_validate(body),
         llm_client or FakeLlmClient(LlmFailure.CALL_FAILED),
         hospital_repository or default_repository(),
+        eta_provider or FakeEtaProvider(),
     )
 
 
@@ -215,6 +222,41 @@ def test_recommendations_come_from_nearest_m_candidates(example_request, example
     result = _run(example_request, hospital_repository=repository)
 
     assert _ids(result) == [f"H{i:02}" for i in range(m)]
+
+
+def test_eta_is_estimated_only_for_recommended_hospitals(example_request, example_patient):
+    """ETA를 추천 병원 N개에만 구하고, 받은 병원과 순서가 추천 병원과 같은지 확인한다. ETA로 순위를 바꾸지 않는다."""
+    example_patient["majorSevereType"] = "심근경색"
+    example_request["recommendCount"] = 1
+    eta_provider = FakeEtaProvider()
+
+    result = _run(example_request, eta_provider=eta_provider)
+
+    assert eta_provider.calls == [["LEC"]]
+    assert [(h.hospital_id, h.eta.hospital_id) for h in result.recommendations] == [("LEC", "LEC")]
+
+
+@pytest.mark.parametrize(("failing_ids", "warned"), [({"REC"}, True), (set(), False)], ids=["one-failed", "all-tmap"])
+def test_eta_failure_warning(example_request, example_patient, failing_ids, warned):
+    """병원 하나라도 ETA를 직선거리로 대신하면 "ETA 계산 실패(직선거리 대체)" 경고를 넣고,
+    모두 Tmap ETA API로 구했으면 넣지 않는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"
+
+    result = _run(example_request, eta_provider=FakeEtaProvider(frozenset(failing_ids)))
+
+    methods = {h.hospital_id: h.eta.method for h in result.recommendations}
+    assert methods == {"LEC": EtaMethod.TMAP, "REC": EtaMethod.STRAIGHT_LINE if warned else EtaMethod.TMAP}
+    assert (WarningCode.ETA_FAILED in result.warnings) is warned
+
+
+def test_eta_is_not_estimated_without_recommendations(example_request):
+    """추천 병원이 0곳이면 EtaProvider를 호출하지 않는지 확인한다."""
+    eta_provider = FakeEtaProvider()
+
+    result = _run(example_request, hospital_repository=FakeHospitalRepository([]), eta_provider=eta_provider)
+
+    assert result.recommendations == ()
+    assert eta_provider.calls == []
 
 
 def test_no_candidates_returns_200_with_empty_recommendations(client, example_request, hospital_repository):
