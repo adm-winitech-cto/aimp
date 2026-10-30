@@ -15,6 +15,8 @@ from aimp.domain.patient import PatientAssessment
 from aimp.domain.recommendation import PipelineResult
 from aimp.domain.types import Department, HospitalCategory, Level, PatientCategory, Resource, WarningCode
 from aimp.ports.llm import LlmFailure, LlmOutput
+from aimp.selection.final_selection import FinalSelection, SelectedHospital
+from aimp.selection.reasons import ReasonTemplate
 
 # 발등 개방성 골절 예시를 "외상, 정형외과 필수"로 판단한 환자 상태 판단 결과
 OPEN_FRACTURE = PatientAssessment(
@@ -27,7 +29,15 @@ OPEN_FRACTURE = PatientAssessment(
 
 
 def _open_fracture_llm() -> FakeLlmClient:
-    return FakeLlmClient(LlmOutput(parsed=OPEN_FRACTURE, raw=OPEN_FRACTURE.model_dump_json()))
+    """환자 상태 판단만 성공하고 다른 LLM 호출(최종 선정 등)은 실패하는 가짜 LlmClient."""
+    output = LlmOutput(parsed=OPEN_FRACTURE, raw=OPEN_FRACTURE.model_dump_json())
+    return FakeLlmClient(LlmFailure.CALL_FAILED, by_format={PatientAssessment: output})
+
+
+def _final_selection_llm(result: FinalSelection | LlmFailure) -> FakeLlmClient:
+    """최종 선정 호출에만 result를 돌려주는 가짜 LlmClient. 환자 상태 판단은 실패한다."""
+    output = LlmOutput(parsed=result, raw=result.model_dump_json()) if isinstance(result, FinalSelection) else result
+    return FakeLlmClient(LlmFailure.CALL_FAILED, by_format={FinalSelection: output})
 
 
 REC = HospitalCategory.REGIONAL_EMERGENCY_CENTER
@@ -325,22 +335,79 @@ def test_fallback_reason_uses_capability_tags(example_request, example_patient):
     )
 
 
-@pytest.mark.parametrize(("remark", "warned"), [("자유서술", True), (None, False)], ids=["remark", "no-remark"])
-def test_recommended_by_fallback_before_final_selection_llm(example_request, example_patient, remark, warned):
-    """최종 선정 LLM을 붙이기 전에는 최종 선정 fallback으로 추천하고 fallback 사유가 없는지, 비고가 있으면
-    "비고 미반영" 경고를 넣는지 확인한다."""
+def test_final_selection_llm_picks_order_and_reasons(example_request, example_patient):
+    """최종 선정 LLM이 성공하면 LLM이 고른 순서와 사유 템플릿으로 추천하고, fallback이 아니며 비고를 반영했으므로
+    "비고 미반영" 경고를 넣지 않는지 확인한다. 후보는 직선거리 순 LEC(3.0km)=1번, REC(4.0km)=2번이다(우회 아님)."""
     example_patient["majorSevereType"] = "심근경색"
-    example_patient["remark"] = remark
+    output = FinalSelection(
+        recommendations=(
+            SelectedHospital(candidate_no=2, reasons=(ReasonTemplate.GRADE,), remark_quote=None),
+            SelectedHospital(candidate_no=1, reasons=(ReasonTemplate.DISTANCE,), remark_quote=None),
+        ),
+        detour_reason=None,
+    )
+    llm_client = _final_selection_llm(output)
+    repository = FakeHospitalRepository([make_hospital("LEC", 3.0, LEC), make_hospital("REC", 4.0, REC)])
+
+    result = _run(example_request, llm_client, repository)
+
+    assert _ids(result) == ["REC", "LEC"]
+    assert [h.reason for h in result.recommendations] == [
+        "권역응급의료센터 조건 충족, 도착 예정 10분",
+        "직선거리 3.0km, 도착 예정 10분",
+    ]
+    assert not result.fallback
+    assert result.fallback_reason is None
+    assert WarningCode.REMARK_NOT_APPLIED not in result.warnings
+    assert any(call.response_format is FinalSelection for call in llm_client.calls)
+
+
+# 후보에 없는 번호(9번)를 고른 출력. 출력 검증이 실패한다
+INVALID_OUTPUT = FinalSelection(
+    recommendations=(SelectedHospital(candidate_no=9, reasons=(ReasonTemplate.DISTANCE,), remark_quote=None),),
+    detour_reason=None,
+)
+
+
+@pytest.mark.parametrize(
+    ("llm_result", "reason"),
+    [
+        (LlmFailure.CALL_FAILED, LlmFailure.CALL_FAILED),
+        (LlmFailure.TIMEOUT, LlmFailure.TIMEOUT),
+        (LlmFailure.QUEUE_FULL, LlmFailure.QUEUE_FULL),
+        (INVALID_OUTPUT, LlmFailure.VALIDATION_FAILED),
+    ],
+    ids=["call-failed", "timeout", "queue-full", "validation-failed"],
+)
+def test_final_selection_failure_falls_back(example_request, example_patient, llm_result, reason):
+    """최종 선정 LLM 호출이 실패하거나 제한 시간을 넘기거나 vLLM 대기 요청이 상한을 넘거나 출력 검증이 실패하면,
+    최종 선정 fallback으로 직선거리 순 병원을 추천하고 fallback 사유와 "비고 미반영" 경고를 넣는지 확인한다(PRD F-09)."""
+    example_patient["majorSevereType"] = "심근경색"
+    example_patient["remark"] = "자유서술"
+
+    result = _run(example_request, _final_selection_llm(llm_result))
+
+    assert _ids(result) == ["LEC", "REC"]
+    assert result.recommendations[0].reason == "지역응급의료센터 조건 충족, 직선거리 3.0km, 도착 예정 10분"
+    assert result.fallback
+    assert result.fallback_reason == reason
+    assert WarningCode.REMARK_NOT_APPLIED in result.warnings
+
+
+def test_fallback_without_remark_has_no_remark_warning(example_request, example_patient):
+    """비고가 없으면 최종 선정 fallback으로 추천해도 "비고 미반영" 경고를 넣지 않는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"
+    example_patient["remark"] = None
 
     result = _run(example_request)
 
-    assert result.fallback
-    assert result.fallback_reason is None
-    assert (WarningCode.REMARK_NOT_APPLIED in result.warnings) is warned
+    assert result.fallback_reason == LlmFailure.CALL_FAILED
+    assert WarningCode.REMARK_NOT_APPLIED not in result.warnings
 
 
 def test_no_fallback_without_candidates(example_request):
-    """후보 병원이 0곳이면 병원을 고르지 않으므로 fallback 여부가 False이고 "비고 미반영" 경고도 넣지 않는지 확인한다."""
+    """후보 병원이 0곳이면 최종 선정도 fallback도 부르지 않아 fallback 여부가 False이고 "비고 미반영" 경고도 넣지 않는지
+    확인한다."""
     result = _run(example_request, hospital_repository=FakeHospitalRepository([]))
 
     assert not result.fallback

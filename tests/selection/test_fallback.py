@@ -12,7 +12,8 @@ from aimp.domain.types import HospitalCategory, Level, WarningCode
 from aimp.engines.capability import CandidateHospital
 from aimp.engines.guideline import LevelCondition
 from aimp.selection import fallback
-from aimp.selection.reasons import PatientContext
+from aimp.selection.final_selection import Recommendation
+from aimp.selection.reasons import PatientContext, join_reasons
 
 REC = HospitalCategory.REGIONAL_EMERGENCY_CENTER
 LEC = HospitalCategory.LOCAL_EMERGENCY_CENTER
@@ -30,27 +31,31 @@ def _candidate(hospital_id: str = "H", distance_km: float = 4.2, stale: bool = F
     return CandidateHospital(replace(make_hospital(hospital_id, distance_km, LEC), **changes), stale_beds=stale)
 
 
-def _ids(candidates: list[CandidateHospital]) -> list[str]:
-    return [candidate.hospital.hospital_id for candidate in candidates]
+def _select(candidates: list[CandidateHospital], count: int = 10, remark: str | None = None, warnings=None):
+    return fallback.select(candidates, count, PATIENT, remark, [] if warnings is None else warnings)
+
+
+def _ids(recommendations: tuple[Recommendation, ...]) -> list[str]:
+    return [recommendation.candidate.hospital.hospital_id for recommendation in recommendations]
 
 
 def test_select_sorts_by_distance_and_keeps_count():
     """직선거리가 가까운 순으로 정렬해 앞의 count개만 고르는지 확인한다. 직선거리가 같으면 hospital_id 순이다."""
     candidates = [_candidate("C", 3.2), _candidate("A", 12.3), _candidate("D", 0.8), _candidate("B", 3.2)]
 
-    assert _ids(fallback.select(candidates, 3, None, [])) == ["D", "B", "C"]
+    assert _ids(_select(candidates, 3)) == ["D", "B", "C"]
 
 
 def test_select_returns_all_when_fewer_than_count():
-    assert _ids(fallback.select([_candidate("A", 2.0), _candidate("B", 1.0)], 10, None, [])) == ["B", "A"]
+    assert _ids(_select([_candidate("A", 2.0), _candidate("B", 1.0)])) == ["B", "A"]
 
 
-@pytest.mark.parametrize(("remark", "warned"), [("계명대 동산병원 희망", True), (None, False), ("", False)])
+@pytest.mark.parametrize(("remark", "warned"), [("계명대 동산병원 희망", True), (None, False), ("", False), ("  ", False)])
 def test_select_warns_remark_not_applied(remark, warned):
-    """비고가 있으면 "비고 미반영" 경고를 넣고, 없거나 빈 문자열이면 넣지 않는지 확인한다."""
+    """비고가 있으면 "비고 미반영" 경고를 넣고, 없거나 빈 문자열·공백뿐이면 넣지 않는지 확인한다."""
     warnings: list[WarningCode] = []
 
-    fallback.select([_candidate()], 1, remark, warnings)
+    _select([_candidate()], remark=remark, warnings=warnings)
 
     assert warnings == ([WarningCode.REMARK_NOT_APPLIED] if warned else [])
 
@@ -74,6 +79,8 @@ def test_select_warns_remark_not_applied(remark, warned):
     ids=["all-values", "stale-beds", "no-er-beds", "straight-line-eta"],
 )
 def test_reason_sentence(candidate, eta, expected):
-    """병원 분류 조건 충족, 직선거리, 응급실 가용병상을 이 순서로 채우고 Tmap ETA API로 구한 ETA를 붙이는지,
-    병상 정보가 오래됐으면 표시하고 응급실 가용병상 값이 없으면 그 사유를 빼는지 확인한다."""
-    assert fallback.reason(candidate, PATIENT, eta) == expected
+    """병원 분류 조건 충족, 직선거리, 응급실 가용병상을 이 순서로 채우고 처리 흐름이 Tmap ETA API로 구한 ETA를 붙이면
+    문장이 맞는지, 병상 정보가 오래됐으면 표시하고 응급실 가용병상 값이 없으면 그 사유를 빼는지 확인한다."""
+    (recommendation,) = _select([candidate])
+
+    assert join_reasons(recommendation.reasons, eta) == expected

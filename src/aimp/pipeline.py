@@ -1,7 +1,4 @@
 """처리 흐름. PRD_v0.1.md §3 '처리 순서'대로 처리 단계를 호출하고, 각 단계가 낸 경고를 모은다.
-
-아직 붙이지 않은 처리 단계: 최종 선정(#18).
-최종 선정 LLM을 붙이기 전까지는 최종 선정 대신 최종 선정 fallback으로 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -17,9 +14,9 @@ from aimp.engines.capability import CandidateHospital
 from aimp.engines.guideline import LevelCondition
 from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
-from aimp.ports.llm import LlmClient
-from aimp.selection import fallback
-from aimp.selection.reasons import PatientContext
+from aimp.ports.llm import LlmClient, LlmFailure
+from aimp.selection import fallback, final_selection
+from aimp.selection.reasons import PatientContext, join_reasons
 
 KST = timezone(timedelta(hours=9))  # 병원 데이터의 병상 갱신 시각(beds_updated_at)은 시간대 정보 없는 KST다
 
@@ -69,24 +66,30 @@ def run(
     candidates = travel.nearest(candidates)
 
     recommendations: tuple[RecommendedHospital, ...] = ()
+    fallback_reason: LlmFailure | None = None
     if chosen is not None:  # L1 조건으로도 후보 병원이 0곳이면 병원을 고르지 않고 ETA도 구하지 않는다
-        # E: 최종 선정 LLM(#18)을 붙이기 전까지 최종 선정 fallback으로 고른다
         count = req.recommend_count or settings.recommend_count
-        picked = fallback.select(candidates, count, req.patient.remark, warnings)
+        patient = PatientContext(chosen, severe_judgment, assessment)
+        # E: 최종 선정. LLM 호출·출력 검증이 실패하면 그 실패 사유로 최종 선정 fallback을 부른다
+        selection = final_selection.select(req.patient, patient, category, candidates, count, llm_client)
+        if isinstance(selection, LlmFailure):
+            fallback_reason = selection
+            picked = fallback.select(candidates, count, patient, req.patient.remark, warnings)
+        else:
+            picked = selection.recommendations
 
         # F: 선정된 N개에만 ETA를 구한다. 순위는 바꾸지 않는다
-        etas = eta_provider.estimate(location.longitude, location.latitude, [c.hospital for c in picked])
+        etas = eta_provider.estimate(location.longitude, location.latitude, [r.candidate.hospital for r in picked])
         if any(eta.method == EtaMethod.STRAIGHT_LINE for eta in etas):
             warnings.append(WarningCode.ETA_FAILED)
-        patient = PatientContext(chosen, severe_judgment, assessment)
         recommendations = tuple(
             RecommendedHospital(
-                hospital_id=candidate.hospital.hospital_id,
-                hospital_name=candidate.hospital.name,
-                reason=fallback.reason(candidate, patient, eta),
+                hospital_id=r.candidate.hospital.hospital_id,
+                hospital_name=r.candidate.hospital.name,
+                reason=join_reasons(r.reasons, eta),
                 eta=eta,
             )
-            for candidate, eta in zip(picked, etas, strict=True)
+            for r, eta in zip(picked, etas, strict=True)
         )
     return PipelineResult(
         recommendations=recommendations,
@@ -96,6 +99,5 @@ def run(
         category=category,
         special_situations=special,
         level=chosen.level if chosen else None,
-        fallback=chosen is not None,
-        fallback_reason=None,  # 최종 선정 LLM을 붙이기 전이라 LLM을 부르지 않았다
+        fallback_reason=fallback_reason,
     )
