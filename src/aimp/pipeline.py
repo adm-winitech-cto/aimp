@@ -16,7 +16,7 @@ from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient, LlmFailure
 from aimp.selection import fallback, final_selection
-from aimp.selection.reasons import PatientContext, join_reasons
+from aimp.selection.reasons import PatientContext, join_reasons, patient_needs
 
 KST = timezone(timedelta(hours=9))  # 병원 데이터의 병상 갱신 시각(beds_updated_at)은 시간대 정보 없는 KST다
 
@@ -82,11 +82,13 @@ def run(
         etas = eta_provider.estimate(location.longitude, location.latitude, [r.candidate.hospital for r in picked])
         if any(eta.method == EtaMethod.STRAIGHT_LINE for eta in etas):
             warnings.append(WarningCode.ETA_FAILED)
+        # 환자에게 필요할 것으로 판단한 진료과·특수 자원은 모든 추천 병원의 사유 맨 앞에 붙인다
+        needs = patient_needs(patient)
         recommendations = tuple(
             RecommendedHospital(
                 hospital_id=r.candidate.hospital.hospital_id,
                 hospital_name=r.candidate.hospital.name,
-                reason=join_reasons(r.reasons, eta),
+                reason=join_reasons(needs + r.reasons, eta),
                 eta=eta,
             )
             for r, eta in zip(picked, etas, strict=True)

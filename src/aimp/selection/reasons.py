@@ -5,6 +5,8 @@
 - 최종 선정 fallback은 정해진 템플릿 목록(PRD_v0.1.md F-09)으로 같은 문장을 만든다.
 - 채울 값이 없는 템플릿은 사유를 만들지 않는다(None). 남은 사유가 하나도 없을 때의 처리는 사용하는 쪽이 정한다.
 - ETA는 최종 선정이 끝난 뒤 추천 병원에만 구하므로 템플릿이 아니다. join_reasons가 마지막에 붙인다.
+- 환자에게 필요할 것으로 판단한 진료과와 특수 자원(patient_needs)도 템플릿이 아니다. 추천 병원 모두에 같으므로
+  LLM이 병원마다 고르지 않고, 처리 흐름이 모든 추천 병원의 사유 맨 앞에 붙인다.
 """
 
 from collections.abc import Iterable
@@ -14,7 +16,7 @@ from enum import StrEnum
 from aimp.domain.eta import Eta, EtaMethod
 from aimp.domain.hospital import AcceptanceStatus, CongestionStatus
 from aimp.domain.patient import PatientAssessment, SevereJudgment
-from aimp.domain.types import SEVERE_DISEASE_NAMES, HospitalCategory
+from aimp.domain.types import SEVERE_DISEASE_NAMES, HospitalCategory, Resource
 from aimp.engines.capability import RESOURCE_CONDITIONS, CandidateHospital
 from aimp.engines.guideline import LevelCondition
 
@@ -86,6 +88,21 @@ def render(
             return f"직선거리 {hospital.distance_km:.1f}km"
         case ReasonTemplate.REMARK:  # '비고: "{인용}"'. 인용이 비고 원문에 있는지는 최종 선정의 출력 검증이 확인한다
             return f'비고: "{quote}"' if quote else None
+
+
+def patient_needs(patient: PatientContext) -> tuple[str, ...]:
+    """환자에게 필요할 것으로 판단한 것. "{필수 진료과} 진료 필요 예상", "{특수 자원} 필요 예상" 순서이고, 값이 없으면 뺀다.
+
+    필수 진료과는 환자 상태 판단(A1), 특수 자원은 중증·특수 자원 판단(A0)의 결과다. 특수 자원에는 분만도 넣는다.
+    """
+    depts = patient.assessment.required_depts if patient.assessment else ()
+    resources = [r for r in Resource if r in patient.severe_judgment.required_resources]
+    needs = []
+    if depts:
+        needs.append(f"{'·'.join(depts)} 진료 필요 예상")
+    if resources:
+        needs.append(f"{'·'.join(resources)} 필요 예상")
+    return tuple(needs)
 
 
 def join_reasons(reasons: Iterable[str | None], eta: Eta) -> str:
