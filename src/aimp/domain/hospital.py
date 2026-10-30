@@ -122,8 +122,10 @@ class Hospital:
         equipment: 병원 상세 availableEquipment[]의 available. value가 Y면 True, N이나 N1이면 False다.
             종류별 key는 Equipment 참고
         delivery_room: 병원 상세 availableFacilities[]의 hv42(분만실)의 available
-        block_messages: 병원 상세 statusMessages, publicStatusMessages. 병원이 등록한 메시지 중 조회 시점에 활성화된
-            것을 모두 담는다. 원소는 정해진 구조 없는 자연어 문장이라서 진료과나 중증질환 코드를 필드로 읽을 수 없다
+        block_messages: 병원 상세 statusMessages, publicStatusMessages의 message. 병원이 쓴 자유 문장이라서 진료과를
+            필드로 읽을 수 없다. 중증 메시지는 문장 앞에 중증질환 이름을 붙인다(예: "산부인과 응급(분만): 일시적 불가").
+            API는 차단 종료 시각(endDateTime)이 지난 메시지도 주므로, 조회 시각이 차단 시작 시각(startDateTime)과
+            종료 시각 사이에 있는 메시지만 담는다
     """
 
     hospital_id: str

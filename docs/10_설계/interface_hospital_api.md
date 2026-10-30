@@ -2,7 +2,7 @@
 
 본 문서는 병원정보 검색 API의 인터페이스를 정리합니다. 병원정보 검색 API는 상황판이 쓰는 병원·응급실 조회 기능을 다른 시스템에 제공하는 외부 API입니다. API는 병원 기본 정보와 실시간 데이터(가용병상, 혼잡도, 장비, 중증질환 수용가능 여부, 진료불가 메시지)를 반환합니다.
 
-> 근거: API 제공처가 2026-10-29에 보낸 안내문과, 개발팀이 같은 날 개발서버를 직접 호출해 확인한 결과입니다. 안내문에 없고 개발팀이 직접 호출해서 알아낸 내용에는 **(실측)** 을 붙였습니다.
+> 근거: API 제공처가 2026-10-29에 보낸 안내문과, 개발팀이 같은 날 개발서버를 직접 호출해 확인한 결과입니다. 진료불가 메시지는 2026-10-30에 개발서버를 다시 호출해 확인했습니다. 안내문에 없고 개발팀이 직접 호출해서 알아낸 내용에는 **(실측)** 을 붙였습니다.
 
 ---
 
@@ -177,9 +177,9 @@ GET /aiemd/api/v1/integration/hospitals/emergency-rooms?longitude=127.0286&latit
 | `data.items[].capacities[].current` | number \| null | 가용 병상 수. **(실측)** 상세 API의 `availableBeds[].availableCount`와 같은 값입니다. `응급실`은 `hvec`, `수술실`은 `hvoc`, `중환자실`은 `hvicc`(일반 중환자실), `신생아`는 `hvncc`, `입원실`은 `hvgc`의 값입니다 |
 | `data.items[].capacities[].total` | number \| null | **(실측)** 상세 API의 `availableBeds[].totalCount`와 같은 값입니다. 뜻은 안내문에 없습니다. 명지병원 수술실은 `current` 10, `total` 8로 `current`가 더 큽니다 |
 | `data.items[].lastUpdatedAt` | string | 실시간 데이터 갱신 시각 |
-| `data.items[].statusMessage` | string \| null | 진료불가 메시지로 보입니다. **(실측)** 모든 병원에서 `null`이었습니다 |
+| `data.items[].statusMessage` | string \| null | 진료불가 메시지로 보입니다. **(실측)** 2026-10-30에 메시지가 있는 병원을 포함해 모든 병원에서 `null`이었습니다 |
 | `data.items[].statusMessageDateTime` | string \| null | `statusMessage`의 시각으로 보입니다. **(실측)** 모든 병원에서 `null`이었습니다 |
-| `data.items[].messageCount` | number | 메시지 수로 보입니다. **(실측)** 모든 병원에서 `0`이었습니다 |
+| `data.items[].messageCount` | number | 진료불가 메시지 수입니다. **(실측)** 2026-10-29에는 모든 병원에서 `0`이었습니다. 2026-10-30에는 전국 응급실 414곳 중 120곳이 1 이상이었고, 그 병원 상세의 `statusMessages`와 `publicStatusMessages` 원소 수를 더한 값과 모두 같았습니다 |
 | `data.items[].coordinates` | number[] | `[경도, 위도]` |
 | `data.totalCount` | number | 검색 조건에 맞는 전체 건수 |
 | `data.page` | number | 요청한 페이지 번호 |
@@ -367,7 +367,9 @@ GET /aiemd/api/v1/integration/hospitals/emergency-rooms?longitude=127.0286&latit
         ],
         "lastUpdatedAt": "2026-10-01 16:25:00",
         "statusMessages": [],
-        "publicStatusMessages": []
+        "publicStatusMessages": [
+            { "id": "PUBLIC-590", "message": "본원 CT 고장으로 CT 촬영 불가능.", "messageType": "응급", "symptomTypeCode": "Y000", "symptomTypeName": "응급실", "displayYn": "차단", "displayMethod": "자동", "startDateTime": "20261030122700", "endDateTime": "20261030173000" }
+        ]
     }
 }
 ```
@@ -384,8 +386,8 @@ GET /aiemd/api/v1/integration/hospitals/emergency-rooms?longitude=127.0286&latit
 | `availableEquipment` | object[] | 장비 가용 여부 (항목 객체). 아래 '`availableEquipment` 키' 표 참고 |
 | `acceptanceCapabilities` | object[] | 중증질환 수용가능 여부 (항목 객체). 아래 '`acceptanceCapabilities` 키' 표 참고 |
 | `lastUpdatedAt` | string \| null | 실시간 데이터 갱신 시각 |
-| `statusMessages` | array | 진료불가 메시지로 보입니다. **(실측)** 전국 응급실 413곳 모두 빈 배열이라 원소 구조를 확인하지 못했습니다 |
-| `publicStatusMessages` | array | 공개용 진료불가 메시지로 보입니다. **(실측)** 전국 응급실 413곳 모두 빈 배열이라 원소 구조를 확인하지 못했습니다 |
+| `statusMessages` | object[] | 진료불가 메시지로 보입니다. **(실측)** 2026-10-29과 2026-10-30 모두 전국 응급실의 모든 병원에서 빈 배열이었습니다. 원소가 `publicStatusMessages`와 같은 구조인지 확인하지 못했습니다 |
+| `publicStatusMessages` | object[] | 공개용 진료불가 메시지로 보입니다. 아래 '진료불가 메시지 객체' 참고. **(실측)** 2026-10-29에는 모든 병원에서 빈 배열이었고, 2026-10-30에는 전국 응급실 414곳 중 120곳에 메시지가 모두 734건 있었습니다 |
 
 **항목 객체:** `weeklyHours`, `bedCapacity`, `availableBeds`, `availableFacilities`, `availableEquipment`, `acceptanceCapabilities`의 원소는 모두 같은 구조입니다.
 
@@ -398,6 +400,20 @@ GET /aiemd/api/v1/integration/hospitals/emergency-rooms?longitude=127.0286&latit
 | `message` | string \| null | 항목의 부가 설명. **(실측)** `acceptanceCapabilities`의 영유아·저체중출생아 항목(`mkioskty10`, `mkioskty12`, `mkioskty14`, `mkioskty15`, `mkioskty27`)에만 값이 있었고, 그 밖의 항목은 모두 `null`이었습니다. 아래 `acceptanceCapabilities` 키 설명 참고 |
 | `availableCount` | number \| null | 가용 수. `availableBeds`에서 씁니다 |
 | `totalCount` | number \| null | 전체 수로 보입니다. `availableBeds`에서 씁니다 |
+
+**진료불가 메시지 객체 (실측, 2026-10-30):** `publicStatusMessages`의 원소입니다. 734건 모두 아래 9개 필드가 있었고, 값이 `null`이거나 빈 문자열인 필드는 없었습니다.
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `id` | string | 메시지 ID (예: `PUBLIC-590`). 병원이 다른 메시지에 같은 `id`가 나오므로, 병원 안에서만 구분되는 값으로 보입니다 |
+| `message` | string | 병원이 쓴 메시지 문장. 정해진 형식이 없습니다. 사유 없이 `불가능메세지등록`만 있는 메시지가 97건으로 가장 많았고, `외상성 뇌출혈 수용 가능`처럼 가능한 범위를 알리는 문장도 있었습니다 |
+| `messageType` | string | 메시지 구분. `응급`(544건)과 `중증`(190건)이 나왔습니다 |
+| `symptomTypeCode` | string | 메시지가 가리키는 대상의 코드. `응급` 메시지는 모두 `Y000`이고, `중증` 메시지는 중증질환 코드(예: `Y0113`)입니다 |
+| `symptomTypeName` | string | 메시지가 가리키는 대상의 이름. `응급` 메시지는 모두 `응급실`이고, `중증` 메시지는 중증질환 이름(예: `산부인과 응급(분만)`)입니다 |
+| `displayYn` | string | 734건 모두 `차단`이었습니다. 값의 뜻과 나올 수 있는 다른 값은 안내문에 없습니다 |
+| `displayMethod` | string | 734건 모두 `자동`이었습니다. 값의 뜻과 나올 수 있는 다른 값은 안내문에 없습니다 |
+| `startDateTime` | string | 차단 시작 시각으로 보입니다. `YYYYMMDDHHMMSS` 형식입니다 (예: `20261030122700`) |
+| `endDateTime` | string | 차단 종료 시각으로 보입니다. `YYYYMMDDHHMMSS` 형식입니다. 2026-10-30 15:11에 호출했을 때 7건은 이 시각(13:30~15:00)이 이미 지난 메시지였습니다. 시작 시각이 호출 시각보다 늦은 메시지는 없었습니다 |
 
 **`availableBeds` 키 (실측, 모든 병원에 같은 7개):**
 
@@ -514,7 +530,7 @@ header = "Accept: application/json"
 | 병원 ID | 개발팀이 가진 응급의료기관 기관ID(hpid) 31개를 병원 상세로 모두 조회했습니다. 그래서 API의 병원 ID는 hpid와 같다고 판단했습니다 |
 | 병원 상세 반복 호출 | 경기도 응급실 73곳을 하나씩 순서대로 조회하는 데 0.95초, 전국 응급실 413곳은 약 5초가 걸렸습니다 (전국은 응급실 목록 5번 호출 포함) |
 | 데이터 시점 | 전국 응급실 413곳의 `lastUpdatedAt`이 모두 2026-10-01 16:00~16:27 사이입니다. 개발서버 데이터는 실시간으로 갱신되지 않습니다 |
-| 진료불가 메시지 | 전국 응급실 413곳 모두 `statusMessages`, `publicStatusMessages`가 빈 배열이고 `messageCount`가 `0`입니다 |
+| 진료불가 메시지 | 전국 응급실 413곳 모두 `statusMessages`, `publicStatusMessages`가 빈 배열이고 `messageCount`가 `0`입니다. 2026-10-30에 다시 호출했을 때는 414곳 중 120곳의 `publicStatusMessages`에 메시지가 있었습니다. 결과는 [병원 상세](#8-병원-상세-hospital-detail)의 '진료불가 메시지 객체'에 적었습니다 |
 
 ---
 
@@ -523,7 +539,7 @@ header = "Accept: application/json"
 아래 항목은 안내문과 실측으로 확인하지 못했습니다. API 제공처에 확인이 필요합니다.
 
 - 운영 환경: 운영 서버 주소, 운영용 `clientId`와 API 키를 발급받는 절차
-- 진료불가 메시지: `statusMessages`, `publicStatusMessages`의 원소 구조, 두 필드의 차이, 응급실 목록의 `statusMessage`와의 관계
+- 진료불가 메시지: `statusMessages`와 `publicStatusMessages`의 차이(`statusMessages`는 2026-10-30에도 모든 병원에서 빈 배열), `displayYn`과 `displayMethod` 값의 뜻, 종료 시각이 지난 메시지를 주는 이유, 응급실 목록의 `statusMessage`와의 관계
 - 값의 뜻
     - `capacities[].total`과 `availableBeds[].totalCount`가 무엇의 수인지 (`current`보다 작은 경우가 있음)
     - `resuscitationRoom`이 어느 병상의 수인지
