@@ -209,7 +209,8 @@ def test_nearest_n_candidates_are_recommended(example_request, example_patient, 
     result = _run(example_request, hospital_repository=repository)
 
     assert _ids(result) == [f"H{i:02}" for i in range(11, 11 - expected, -1)]
-    assert result.recommendations[0].reason == "직선거리 9.0km"
+    # 기본 병원 데이터에는 응급실 가용병상 값이 없으므로 er_beds 사유가 빠진다
+    assert result.recommendations[0].reason == "권역응급의료센터 조건 충족, 직선거리 9.0km, 도착 예정 10분"
 
 
 def test_recommendations_come_from_nearest_m_candidates(example_request, example_patient):
@@ -310,3 +311,37 @@ def test_stale_bed_data_warning(example_request, example_patient, stale):
 
     assert _ids(result) == ["LEC", "REC"]
     assert (WarningCode.STALE_BED_DATA in result.warnings) is stale
+
+
+def test_fallback_reason_uses_capability_tags(example_request, example_patient):
+    """진료 역량 규칙 엔진이 붙인 "병상 정보 오래됨" 태그가 최종 선정 fallback의 추천 사유까지 넘어가는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"
+    repository = FakeHospitalRepository([make_hospital("LEC", 1.0, LEC, er_available=3, stale=True)])
+
+    result = _run(example_request, hospital_repository=repository)
+
+    assert result.recommendations[0].reason == (
+        "지역응급의료센터 조건 충족, 직선거리 1.0km, 응급실 가용병상 3(병상 정보 오래됨), 도착 예정 10분"
+    )
+
+
+@pytest.mark.parametrize(("remark", "warned"), [("자유서술", True), (None, False)], ids=["remark", "no-remark"])
+def test_recommended_by_fallback_before_final_selection_llm(example_request, example_patient, remark, warned):
+    """최종 선정 LLM을 붙이기 전에는 최종 선정 fallback으로 추천하고 fallback 사유가 없는지, 비고가 있으면
+    "비고 미반영" 경고를 넣는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"
+    example_patient["remark"] = remark
+
+    result = _run(example_request)
+
+    assert result.fallback
+    assert result.fallback_reason is None
+    assert (WarningCode.REMARK_NOT_APPLIED in result.warnings) is warned
+
+
+def test_no_fallback_without_candidates(example_request):
+    """후보 병원이 0곳이면 병원을 고르지 않으므로 fallback 여부가 False이고 "비고 미반영" 경고도 넣지 않는지 확인한다."""
+    result = _run(example_request, hospital_repository=FakeHospitalRepository([]))
+
+    assert not result.fallback
+    assert WarningCode.REMARK_NOT_APPLIED not in result.warnings

@@ -1,7 +1,7 @@
 """처리 흐름. PRD_v0.1.md §3 '처리 순서'대로 처리 단계를 호출하고, 각 단계가 낸 경고를 모은다.
 
-아직 붙이지 않은 처리 단계: 최종 선정(#18), 최종 선정 fallback(#19).
-최종 선정 fallback을 붙이기 전까지는 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
+아직 붙이지 않은 처리 단계: 최종 선정(#18).
+최종 선정 LLM을 붙이기 전까지는 최종 선정 대신 최종 선정 fallback으로 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -10,13 +10,16 @@ from aimp.api.request import RecommendRequest
 from aimp.classification import patient_assessment, severe_resource, severity
 from aimp.common.settings import settings
 from aimp.domain.eta import EtaMethod
-from aimp.domain.hospital import Hospital
 from aimp.domain.recommendation import PipelineResult, RecommendedHospital
-from aimp.domain.types import Level, WarningCode
+from aimp.domain.types import WarningCode
 from aimp.engines import capability, guideline, travel
+from aimp.engines.capability import CandidateHospital
+from aimp.engines.guideline import LevelCondition
 from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
+from aimp.selection import fallback
+from aimp.selection.reasons import PatientContext
 
 KST = timezone(timedelta(hours=9))  # 병원 데이터의 병상 갱신 시각(beds_updated_at)은 시간대 정보 없는 KST다
 
@@ -44,44 +47,55 @@ def run(
     hospitals = hospital_repository.find_by_categories(
         location.longitude, location.latitude, frozenset().union(*(condition.categories for condition in levels))
     )
-    level: Level | None = None
-    candidates: list[Hospital] = []
+    chosen: LevelCondition | None = None  # 후보 병원을 고른 레벨의 조건. 추천 사유의 병원 분류 조건 충족에 쓴다
+    candidates: list[CandidateHospital] = []
     for condition in levels:  # C: 후보 병원이 0곳이면 다음 레벨. L1 조건으로도 0곳이면 추천하지 않는다
-        candidates = [hospital for hospital in hospitals if hospital.categories & condition.categories]
+        matched = [hospital for hospital in hospitals if hospital.categories & condition.categories]
         capability_warnings: list[WarningCode] = []
         # C: 진료 역량 규칙 엔진. 진료 역량 조건은 레벨이 내려가도 낮추지 않는다.
-        # 엔진이 붙인 태그(병상 정보 오래됨, 분만 가능)는 최종 선정(#18)을 붙일 때 넘긴다
+        # 엔진이 붙인 태그(병상 정보 오래됨, 분만 가능)는 추천 사유에 쓰므로 후보 병원에 붙인 채 넘긴다
         if settings.capability_engine_enabled:
-            passed, capability_warnings = capability.filter_candidates(
-                candidates, severe_judgment, assessment, category, queried_at, llm_client
+            candidates, capability_warnings = capability.filter_candidates(
+                matched, severe_judgment, assessment, category, queried_at, llm_client
             )
-            candidates = [candidate.hospital for candidate in passed]
+        else:
+            candidates = [CandidateHospital(hospital, stale_beds=False) for hospital in matched]
         if candidates:
-            level = condition.level
+            chosen = condition
             warnings.extend(capability_warnings)  # 추천에 쓰는 레벨의 경고만 넣는다
             break
 
     # C: 도착시간·거리 규칙 엔진. 직선거리가 가까운 후보 병원 M개(llm_candidate_count)만 남긴다
     candidates = travel.nearest(candidates)
 
-    # E 자리: 최종 선정 fallback(#19)을 붙이기 전까지 직선거리가 가까운 병원 N개를 추천한다.
-    picked = candidates[: req.recommend_count or settings.recommend_count]
+    recommendations: tuple[RecommendedHospital, ...] = ()
+    if chosen is not None:  # L1 조건으로도 후보 병원이 0곳이면 병원을 고르지 않고 ETA도 구하지 않는다
+        # E: 최종 선정 LLM(#18)을 붙이기 전까지 최종 선정 fallback으로 고른다
+        count = req.recommend_count or settings.recommend_count
+        picked = fallback.select(candidates, count, req.patient.remark, warnings)
 
-    # F: 선정된 N개에만 ETA를 구한다. 순위는 바꾸지 않는다
-    etas = eta_provider.estimate(location.longitude, location.latitude, picked) if picked else []
-    if any(eta.method == EtaMethod.STRAIGHT_LINE for eta in etas):
-        warnings.append(WarningCode.ETA_FAILED)
-    return PipelineResult(
-        recommendations=tuple(
+        # F: 선정된 N개에만 ETA를 구한다. 순위는 바꾸지 않는다
+        etas = eta_provider.estimate(location.longitude, location.latitude, [c.hospital for c in picked])
+        if any(eta.method == EtaMethod.STRAIGHT_LINE for eta in etas):
+            warnings.append(WarningCode.ETA_FAILED)
+        patient = PatientContext(chosen, severe_judgment, assessment)
+        recommendations = tuple(
             RecommendedHospital(
-                hospital_id=h.hospital_id, hospital_name=h.name, reason=f"직선거리 {h.distance_km:.1f}km", eta=eta
+                hospital_id=candidate.hospital.hospital_id,
+                hospital_name=candidate.hospital.name,
+                reason=fallback.reason(candidate, patient, eta),
+                eta=eta,
             )
-            for h, eta in zip(picked, etas, strict=True)
-        ),
+            for candidate, eta in zip(picked, etas, strict=True)
+        )
+    return PipelineResult(
+        recommendations=recommendations,
         warnings=tuple(warnings),
         severe_judgment=severe_judgment,
         assessment=assessment,
         category=category,
         special_situations=special,
-        level=level,
+        level=chosen.level if chosen else None,
+        fallback=chosen is not None,
+        fallback_reason=None,  # 최종 선정 LLM을 붙이기 전이라 LLM을 부르지 않았다
     )

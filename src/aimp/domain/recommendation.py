@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from aimp.domain.eta import Eta
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Level, PatientCategory, WarningCode
+from aimp.ports.llm import LlmFailure
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,10 @@ class PipelineResult:
     category: PatientCategory  # 적용 규칙. 4대 중증이면 A0이, 아니면 A2가 정한다
     special_situations: tuple[str, ...]  # 외상 환자의 특수상황 항목. 항목이 있으면 "직접의료지도 필요"
     level: Level | None  # 후보 병원을 고른 레벨. L1 조건으로도 후보 병원이 0곳이면 None
+    # 최종 선정 fallback으로 추천했으면 True. 후보 병원이 0곳이면 병원을 고르지 않으므로 False
+    fallback: bool
+    # 최종 선정 fallback 사유(최종 선정 LLM의 실패 사유). 최종 선정 LLM을 연결하기 전(#18)에는 LLM을 부르지 않으므로 None
+    fallback_reason: LlmFailure | None
 
     @property
     def medical_direction_needed(self) -> bool:

@@ -3,12 +3,13 @@
 from aimp.common.settings import settings
 from aimp.domain.hospital import BedCount, CongestionStatus, Hospital
 from aimp.engines import travel
+from aimp.engines.capability import CandidateHospital
 
 NO_BEDS = BedCount(available=None, total=None)
 
 
-def _hospital(hospital_id: str, distance_km: float) -> Hospital:
-    return Hospital(
+def _hospital(hospital_id: str, distance_km: float) -> CandidateHospital:
+    hospital = Hospital(
         hospital_id=hospital_id,
         name=hospital_id,
         longitude=127.0,
@@ -29,10 +30,11 @@ def _hospital(hospital_id: str, distance_km: float) -> Hospital:
         delivery_room=None,
         block_messages=(),
     )
+    return CandidateHospital(hospital, stale_beds=False)
 
 
-def _ids(hospitals: list[Hospital]) -> list[str]:
-    return [hospital.hospital_id for hospital in hospitals]
+def _ids(candidates: list[CandidateHospital]) -> list[str]:
+    return [candidate.hospital.hospital_id for candidate in candidates]
 
 
 def test_nearest_sorts_by_distance_and_keeps_count():
