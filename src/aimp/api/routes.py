@@ -6,11 +6,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from aimp import pipeline
 from aimp.api.request import RecommendRequest
-from aimp.api.response import RecommendResponse
+from aimp.api.response import Recommendation, RecommendResponse
 from aimp.adapters.vllm import VllmClient
 from aimp.ports.llm import LlmClient
-from aimp.selection import static_selection
 
 RECOMMEND_PATH = "/api/v1/recHosp"
 
@@ -38,5 +38,12 @@ def recommend(
     llm_client: Annotated[LlmClient, Depends(get_llm_client)],
     rng: Annotated[random.Random, Depends(get_rng)],
 ) -> RecommendResponse:
-    # 처리 파이프라인을 구현하기 전까지 정적 병원 목록으로 선정한다.
-    return static_selection.recommend(body, llm_client, rng)
+    result = pipeline.run(body, llm_client, rng)
+    return RecommendResponse(
+        incident_id=body.incident_id,
+        request_seq=body.request_seq,
+        recommendations=[
+            Recommendation(hospital_id=h.hospital_id, hospital_name=h.hospital_name, rank=rank, reason=h.reason)
+            for rank, h in enumerate(result.recommendations, start=1)
+        ],
+    )
