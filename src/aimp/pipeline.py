@@ -1,8 +1,10 @@
 """처리 흐름. PRD_v0.1.md §3 '처리 순서'대로 처리 단계를 호출하고, 각 단계가 낸 경고를 모은다.
 
-아직 붙이지 않은 처리 단계: 진료 역량 규칙 엔진(#23), 최종 선정(#18), 최종 선정 fallback(#19).
+아직 붙이지 않은 처리 단계: 최종 선정(#18), 최종 선정 fallback(#19).
 최종 선정 fallback을 붙이기 전까지는 후보 병원 중 직선거리가 가까운 병원 N개를 추천한다.
 """
+
+from datetime import datetime, timedelta, timezone
 
 from aimp.api.request import RecommendRequest
 from aimp.classification import patient_assessment, severe_resource, severity
@@ -11,10 +13,12 @@ from aimp.domain.eta import EtaMethod
 from aimp.domain.hospital import Hospital
 from aimp.domain.recommendation import PipelineResult, RecommendedHospital
 from aimp.domain.types import Level, WarningCode
-from aimp.engines import guideline, travel
+from aimp.engines import capability, guideline, travel
 from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
+
+KST = timezone(timedelta(hours=9))  # 병원 데이터의 병상 갱신 시각(beds_updated_at)은 시간대 정보 없는 KST다
 
 
 def run(
@@ -34,6 +38,8 @@ def run(
 
     levels = guideline.levels_for(category)  # B: [L0 조건, L1 조건]
     location = req.patient.location
+    # 병원정보 조회 시각. 진료 역량 규칙 엔진이 병상 데이터 신선도를 판정할 때 쓴다
+    queried_at = datetime.now(KST).replace(tzinfo=None)
     # C0: L0·L1 조건의 병원 분류를 합쳐 한 번만 조회한다. 조회가 실패하면 HospitalLookupError가 그대로 나간다.
     hospitals = hospital_repository.find_by_categories(
         location.longitude, location.latitude, frozenset().union(*(condition.categories for condition in levels))
@@ -42,8 +48,17 @@ def run(
     candidates: list[Hospital] = []
     for condition in levels:  # C: 후보 병원이 0곳이면 다음 레벨. L1 조건으로도 0곳이면 추천하지 않는다
         candidates = [hospital for hospital in hospitals if hospital.categories & condition.categories]
+        capability_warnings: list[WarningCode] = []
+        # C: 진료 역량 규칙 엔진. 진료 역량 조건은 레벨이 내려가도 낮추지 않는다.
+        # 엔진이 붙인 태그(병상 정보 오래됨, 분만 가능)는 최종 선정(#18)을 붙일 때 넘긴다
+        if settings.capability_engine_enabled:
+            passed, capability_warnings = capability.filter_candidates(
+                candidates, severe_judgment, assessment, category, queried_at
+            )
+            candidates = [candidate.hospital for candidate in passed]
         if candidates:
             level = condition.level
+            warnings.extend(capability_warnings)  # 추천에 쓰는 레벨의 경고만 넣는다
             break
 
     # C: 도착시간·거리 규칙 엔진. 직선거리가 가까운 후보 병원 M개(llm_candidate_count)만 남긴다

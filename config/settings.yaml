@@ -7,6 +7,9 @@ assessment_timeout_seconds: 3.0  # 환자 상태 판단 LLM 호출 제한 시간
 llm_timeout_seconds: 5.0  # 최종 선정 LLM 호출 제한 시간 (PRD_v0.1.md F-08 '최종 선정'의 예시값)
 vllm_max_waiting_requests: 8  # vLLM 대기 요청 수가 이 값을 넘으면 LLM을 호출하지 않음 (임시값)
 
+# 규칙 엔진 활성화 (PRD_v0.1.md F-07 '규칙 엔진 적용과 레벨 진행'). false면 pipeline.py가 그 엔진을 호출하지 않는다
+capability_engine_enabled: true  # 진료 역량 규칙 엔진
+
 # 프롬프트 버전
 assessment_prompt_version: patient_assessment_v1  # 환자 상태 판단 (classification/prompts/)
 prompt_version: final_selection_v1  # 최종 선정 (selection/prompts/)
