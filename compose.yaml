@@ -8,10 +8,6 @@ services:
       - ./config:/app/config:ro
     # 호스트 네트워크를 써서 앱이 호스트의 8091 포트에서 바로 받고, 같은 호스트의 vLLM(localhost:8099)에 닿는다.
     network_mode: host
-    # 병원정보 검색 API 인증 키. 커밋하지 않는 .env(compose.yaml 옆)에 두고 앱에 넘긴다. 없으면 compose가 멈춘다.
-    environment:
-      HOSPITAL_API_CLIENT_ID: ${HOSPITAL_API_CLIENT_ID:?.env에 HOSPITAL_API_CLIENT_ID가 없습니다}
-      HOSPITAL_API_KEY: ${HOSPITAL_API_KEY:?.env에 HOSPITAL_API_KEY가 없습니다}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/healthz', timeout=2)"]
       interval: 30s
