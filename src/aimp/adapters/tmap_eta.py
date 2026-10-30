@@ -3,11 +3,10 @@
 - Tmap 자동차 경로안내(POST /tmap/routes?version=1)를 병원마다 한 번씩 병렬로 호출하고, 응답의 경로 요약
   (features[0].properties)에서 총 거리(totalDistance, m)와 총 소요 시간(totalTime, 초)을 읽는다.
 - Tmap ETA API는 에어갭 현장에서 예외적으로 호출할 수 있는 외부 API다.
-- 앱 키는 환경 변수 TMAP_APP_KEY에서 읽는다. 키를 설정 파일과 저장소에 넣지 않는다.
+- 앱 키는 config/settings.yaml의 tmap_app_key에서 읽는다. 저장소의 키는 개발용 테스트 키다.
 """
 
 import logging
-import os
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -36,11 +35,10 @@ class TmapEtaProvider:
         self,
         url: str = settings.tmap_eta_url,
         timeout: float = settings.tmap_eta_timeout_seconds,
-        app_key: str | None = None,
+        app_key: str = settings.tmap_app_key,
     ):
-        app_key = app_key or os.environ.get("TMAP_APP_KEY")
         if not app_key:
-            raise ValueError("환경 변수 TMAP_APP_KEY가 없습니다")
+            raise ValueError("Tmap 앱 키(tmap_app_key)가 비어 있습니다")
         self._url = url
         self._timeout = timeout
         self._session = requests.Session()

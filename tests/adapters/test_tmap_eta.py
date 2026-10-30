@@ -250,8 +250,6 @@ def test_failure_of_one_hospital_keeps_others(tmap):
     ]
 
 
-def test_missing_app_key_raises_value_error(monkeypatch):
-    monkeypatch.delenv("TMAP_APP_KEY", raising=False)
-
-    with pytest.raises(ValueError, match="TMAP_APP_KEY"):
-        TmapEtaProvider(url="http://127.0.0.1:1/tmap/routes")
+def test_empty_app_key_raises_value_error():
+    with pytest.raises(ValueError, match="tmap_app_key"):
+        TmapEtaProvider(url="http://127.0.0.1:1/tmap/routes", app_key="")
