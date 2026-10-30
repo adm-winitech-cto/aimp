@@ -1,0 +1,116 @@
+{
+  "patient": {
+    "pre_ktas": {
+      "level": 2,
+      "assessment_detail": "15세 이상 - 근골격계 - 하지 손상 - 개방성 골절 또는 신경혈관 장애"
+    },
+    "age": 65.0,
+    "sex": "남",
+    "chief_complaint": "발등 개방성 골절",
+    "symptoms": [
+      "골절",
+      "열상"
+    ],
+    "consciousness_level": "명료",
+    "vital_signs": {
+      "recorded_at": "2026-08-31T17:11:26",
+      "systolic_bp_mm_hg": 110.0,
+      "diastolic_bp_mm_hg": 90.0,
+      "pulse_per_min": 97.0,
+      "respiratory_rate_per_min": 18.0,
+      "body_temp_celsius": 36.8,
+      "spo2_percent": 97.0,
+      "blood_glucose_mg_dl": 210.0
+    },
+    "medical_history": [
+      {
+        "disease_name": "뇌혈관질환"
+      },
+      {
+        "disease_name": "당뇨"
+      },
+      {
+        "disease_name": "기타",
+        "detail": "고지혈증"
+      }
+    ]
+  },
+  "assessment": {
+    "is_trauma": true,
+    "required_depts": [
+      "정형외과"
+    ],
+    "supportive_depts": [
+      "성형외과"
+    ]
+  },
+  "category": "경증외상",
+  "level": "L0",
+  "recommend_count": 3,
+  "candidates": [
+    {
+      "no": 1,
+      "name": "H1병원",
+      "categories": [
+        "지역응급의료기관"
+      ],
+      "distance_km": 1.5,
+      "er_beds": 0,
+      "congestion": "혼잡",
+      "departments": [
+        "정형외과",
+        "성형외과"
+      ]
+    },
+    {
+      "no": 2,
+      "name": "H2병원",
+      "categories": [
+        "지역응급의료기관"
+      ],
+      "distance_km": 3.0,
+      "er_beds": 3,
+      "departments": [
+        "정형외과"
+      ],
+      "block_messages": [
+        "[정형외과] 수지접합 불가"
+      ]
+    },
+    {
+      "no": 3,
+      "name": "H3병원",
+      "categories": [
+        "지역응급의료기관"
+      ],
+      "distance_km": 4.2,
+      "er_beds": 8,
+      "icu_beds": 2,
+      "departments": [
+        "정형외과",
+        "성형외과"
+      ],
+      "tags": [
+        "병상 정보 오래됨"
+      ]
+    },
+    {
+      "no": 4,
+      "name": "H4병원",
+      "categories": [
+        "지역응급의료기관"
+      ],
+      "distance_km": 5.1,
+      "er_beds": 6,
+      "congestion": "여유있음",
+      "departments": [
+        "정형외과",
+        "성형외과"
+      ],
+      "tags": [
+        "우회"
+      ]
+    }
+  ],
+  "remark": "자유서술"
+}
