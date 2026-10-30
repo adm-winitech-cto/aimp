@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from aimp.domain.types import HospitalCategory
+from aimp.domain.types import Department, HospitalCategory
 
 
 class IcuBedType(StrEnum):
@@ -110,7 +110,8 @@ class Hospital:
         distance_km: 응급실 목록 items[].distance. 요청의 환자 위치에서 병원까지의 직선거리
         categories: 응급실 목록 items[].type (권역응급의료센터, 지역응급의료센터, 지역응급의료기관).
             API에 권역외상센터 분류가 없어서, 권역외상센터는 config/trauma_centers.yaml의 hpid 목록으로 정한다
-        departments: 병원 상세 specialty. 값은 /specialties의 진료과목 명칭
+        departments: 병원 상세 specialty. 값은 /specialties의 진료과목 명칭이다. Department에 없는 명칭(옛 과목명
+            산업의학과·치료방사선과·해부병리과 등)은 버린다
         er_beds: 병원 상세 availableBeds[]의 hvec
         icu_beds: 병원 상세 availableBeds[]. 종류별 key는 IcuBedType 참고
         operating_room_beds: 병원 상세 availableBeds[]의 hvoc
@@ -134,7 +135,7 @@ class Hospital:
     latitude: float  # WGS84
     distance_km: float  # 환자 위치에서의 직선거리. API가 소수 첫째 자리까지 준다
     categories: frozenset[HospitalCategory]  # 병원이 속한 분류. 하나 이상
-    departments: frozenset[str]  # 보유 진료과
+    departments: frozenset[Department]  # 보유 진료과
     er_beds: BedCount  # 응급실 가용병상
     icu_beds: dict[IcuBedType, BedCount]  # 중환자실 가용병상
     operating_room_beds: BedCount  # 수술실 가용병상

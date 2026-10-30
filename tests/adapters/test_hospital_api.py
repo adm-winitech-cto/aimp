@@ -22,7 +22,7 @@ from aimp.domain.hospital import (
     Equipment,
     IcuBedType,
 )
-from aimp.domain.types import HospitalCategory
+from aimp.domain.types import Department, HospitalCategory
 from aimp.ports.hospital_repository import HospitalLookupError
 
 LONGITUDE, LATITUDE = 128.5911, 35.8714
@@ -214,6 +214,18 @@ def test_maps_room_and_detail_to_hospital(api):
     assert hospital.congestion == 75
     assert hospital.congestion_status == CongestionStatus.NORMAL
     assert hospital.block_messages == ()
+
+
+def test_departments_keep_only_department_names(api, caplog):
+    """specialty에 Department의 명칭과 옛 과목명이 섞여 있으면 Department 값만 담고 옛 과목명은 DEBUG 로그로 남기는지 확인한다."""
+    api.details["A1"]["specialty"] = ["정형외과", "산업의학과", "응급의학과", "치료방사선과", "해부병리과"]
+
+    with caplog.at_level("DEBUG", logger="aimp.adapters.hospital_api"):
+        [hospital] = _repository(api).find_by_categories(LONGITUDE, LATITUDE, ALL_EMERGENCY)
+
+    assert hospital.departments == {Department.ORTHOPEDIC_SURGERY, Department.EMERGENCY_MEDICINE}
+    assert all(isinstance(department, Department) for department in hospital.departments)
+    assert "['산업의학과', '치료방사선과', '해부병리과']" in caplog.text
 
 
 def test_maps_beds(api):
