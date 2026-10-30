@@ -8,6 +8,7 @@ from fake_llm import FakeLlmClient
 from aimp import pipeline
 from aimp.api.request import RecommendRequest
 from aimp.api.routes import RECOMMEND_PATH
+from aimp.classification import severity
 from aimp.domain.patient import PatientAssessment
 from aimp.domain.types import Department, PatientCategory, Resource, WarningCode
 from aimp.ports.llm import LlmFailure, LlmOutput
@@ -84,3 +85,35 @@ def test_assessment_failure_does_not_fail_request(client, example_request):
     assert WarningCode.ASSESSMENT_FAILED in result.warnings
     assert result.recommendations
     assert client.post(RECOMMEND_PATH, json=example_request).status_code == 200
+
+
+def test_major_severe_patient_skips_severity_judgment(example_request, example_patient, monkeypatch):
+    """4대 중증 환자에게는 중증도 판정(A2)을 호출하지 않고 A0이 정한 적용 규칙을 쓰는지 확인한다."""
+    example_patient["majorSevereType"] = "중증외상"
+
+    def fail(*args):
+        raise AssertionError("4대 중증 환자에게 severity.judge를 호출했다")
+
+    monkeypatch.setattr(severity, "judge", fail)
+
+    assert _run(example_request).category == PatientCategory.SEVERE_TRAUMA
+
+
+def test_open_fracture_example_is_minor_trauma_with_risky_age(example_request):
+    """발등 개방성 골절 예시(65세)가 "외상, 정형외과 필수"로 판단되면, 적용 규칙이 경증외상이고
+    특수상황 항목에 위험한 나이가 있는지 확인한다."""
+    output = LlmOutput(parsed=OPEN_FRACTURE, raw=OPEN_FRACTURE.model_dump_json())
+    llm_client = FakeLlmClient(LlmFailure.CALL_FAILED, results_by_format={PatientAssessment: output})
+
+    result = _run(example_request, llm_client)
+
+    assert result.category == PatientCategory.MINOR_TRAUMA
+    assert result.special_situations == (severity.RISKY_AGE,)
+
+
+def test_major_severe_trauma_patient_gets_special_situations(example_request, example_patient):
+    """4대 중증 구분이 중증외상인 55세 이상 환자도 특수상황 판정을 받아 위험한 나이 항목이 있는지 확인한다."""
+    example_patient["majorSevereType"] = "중증외상"
+    example_patient["info"]["age"] = 55
+
+    assert severity.RISKY_AGE in _run(example_request).special_situations

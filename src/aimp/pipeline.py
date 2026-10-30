@@ -8,9 +8,9 @@ import random
 from dataclasses import dataclass
 
 from aimp.api.request import RecommendRequest
-from aimp.classification import patient_assessment, severe_resource
+from aimp.classification import patient_assessment, severe_resource, severity
 from aimp.domain.patient import PatientAssessment, SevereJudgment
-from aimp.domain.types import WarningCode
+from aimp.domain.types import PatientCategory, WarningCode
 from aimp.ports.llm import LlmClient
 from aimp.selection import static_selection
 
@@ -32,6 +32,8 @@ class PipelineResult:
     warnings: tuple[WarningCode, ...]
     severe_judgment: SevereJudgment  # A0: 4대 중증 구분, 적용 규칙, 특수 자원
     assessment: PatientAssessment | None  # A1: 환자 상태 판단 결과. LLM이 실패하면 None
+    category: PatientCategory  # 적용 규칙. 4대 중증이면 A0이, 아니면 A2가 정한다
+    special_situations: tuple[str, ...]  # 외상 환자의 특수상황 항목. 항목이 있으면 "직접의료지도 필요"
 
 
 def run(req: RecommendRequest, llm_client: LlmClient, rng: random.Random) -> PipelineResult:
@@ -40,6 +42,9 @@ def run(req: RecommendRequest, llm_client: LlmClient, rng: random.Random) -> Pip
         warnings.append(WarningCode.NO_VITAL_SIGNS)
     severe_judgment = severe_resource.judge(req.patient)  # A0
     assessment = patient_assessment.assess(req.patient, llm_client, warnings)  # A1, 모든 환자. LLM이 실패하면 None
+    # A2, 4대 중증이 아닐 때만. assessment가 None이면 비외상 기준
+    category = severe_judgment.category or severity.judge(req.patient, assessment)
+    special = severity.special_situations(req.patient, category, assessment)  # 외상 환자만
     selected = static_selection.recommend(req, llm_client, rng)
     return PipelineResult(
         recommendations=tuple(
@@ -49,4 +54,6 @@ def run(req: RecommendRequest, llm_client: LlmClient, rng: random.Random) -> Pip
         warnings=tuple(warnings),
         severe_judgment=severe_judgment,
         assessment=assessment,
+        category=category,
+        special_situations=special,
     )
