@@ -117,7 +117,7 @@
   지금 15)로 줄이므로, `recommendCount`가 M보다 커도 추천 병원은 M개를 넘지 않는다. 추천 병원마다
   Tmap ETA API를 호출해 ETA를 구하지만, 응답에는 아직 넣지 않는다. L1 조건으로도 후보 병원이 없으면 빈 `recommendations`를 반환하고, 병원 데이터
   조회가 실패하면 500을 반환한다. 운영 현장의 앱에는 환경 변수 `HOSPITAL_API_CLIENT_ID`,
-  `HOSPITAL_API_KEY`가 있어야 한다. 평가셋이 아직 없어 F-12 '모델 평가'의 지표는 확인하지 않았다.
+  `HOSPITAL_API_KEY`가 있어야 하고, 없으면 앱이 시작되지 않는다. 평가셋이 아직 없어 F-12 '모델 평가'의 지표는 확인하지 않았다.
 
 ### Removed
 - **요청의 `rejectedHospitals`에 있는 병원을 추천에서 빼지 않는다**: 임시 선정 단계는

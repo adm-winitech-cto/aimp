@@ -1,12 +1,17 @@
 """FastAPI 앱 진입점."""
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 
+from aimp.adapters.hospital_api import HospitalApiRepository
+from aimp.adapters.tmap_eta import TmapEtaProvider
+from aimp.adapters.vllm import VllmClient
 from aimp.api.routes import router
 from aimp.common.logging_config import configure_logging
 
@@ -15,7 +20,18 @@ logger = logging.getLogger(__name__)
 
 MAX_LOGGED_BODY_BYTES = 64 * 1024
 
-app = FastAPI(title="응급환자 이송 병원 추천")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # 구현을 인터페이스에 연결하는 곳은 이 파일 하나다(PRD_v0.1.md §4 '모듈 규칙').
+    # 구현을 만들 수 없으면(예: 병원정보 검색 API 인증 환경 변수가 없음) 앱이 시작되지 않는다.
+    app.state.llm_client = VllmClient()
+    app.state.hospital_repository = HospitalApiRepository()
+    app.state.eta_provider = TmapEtaProvider()
+    yield
+
+
+app = FastAPI(title="응급환자 이송 병원 추천", lifespan=lifespan)
 app.include_router(router)
 
 

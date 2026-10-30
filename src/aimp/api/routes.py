@@ -1,16 +1,12 @@
 """병원 추천 API 라우트."""
 
-from functools import cache
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from aimp import pipeline
 from aimp.api.request import RecommendRequest
 from aimp.api.response import Recommendation, RecommendResponse
-from aimp.adapters.hospital_api import HospitalApiRepository
-from aimp.adapters.tmap_eta import TmapEtaProvider
-from aimp.adapters.vllm import VllmClient
 from aimp.ports.eta_provider import EtaProvider
 from aimp.ports.hospital_repository import HospitalRepository
 from aimp.ports.llm import LlmClient
@@ -20,19 +16,17 @@ RECOMMEND_PATH = "/api/v1/recHosp"
 router = APIRouter()
 
 
-@cache
-def get_llm_client() -> LlmClient:
-    return VllmClient()
+# 인터페이스의 구현은 main.py가 앱을 시작할 때 만들어 app.state에 둔다. 테스트는 이 함수들을 가짜 구현으로 바꾼다.
+def get_llm_client(request: Request) -> LlmClient:
+    return request.app.state.llm_client
 
 
-@cache
-def get_hospital_repository() -> HospitalRepository:
-    return HospitalApiRepository()
+def get_hospital_repository(request: Request) -> HospitalRepository:
+    return request.app.state.hospital_repository
 
 
-@cache
-def get_eta_provider() -> EtaProvider:
-    return TmapEtaProvider()
+def get_eta_provider(request: Request) -> EtaProvider:
+    return request.app.state.eta_provider
 
 
 @router.get("/healthz")
