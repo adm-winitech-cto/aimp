@@ -238,3 +238,4 @@ class WarningCode(StrEnum):
     STALE_BED_DATA = "병상 정보 오래됨"
     REMARK_NOT_APPLIED = "비고 미반영"
     ASSESSMENT_FAILED = "환자 상태 판단 실패"
+    ETA_FAILED = "ETA 계산 실패(직선거리 대체)"

@@ -50,6 +50,9 @@ class Settings(BaseModel):
     hospital_api_timeout_seconds: float
     hospital_api_max_concurrency: int
     hospital_search_radius_km: float
+    tmap_eta_url: str
+    tmap_eta_timeout_seconds: float
+    tmap_app_key: str
 
 
 def load(path: Path) -> Settings:
