@@ -159,3 +159,25 @@ def _eta(method: EtaMethod, travel_seconds: int | None) -> Eta:
 def test_join_reasons(eta, expected):
     """사유를 순서대로 ', '로 이어 붙이고 None은 빼며, Tmap ETA면 마지막에 도착 예정 시간을 붙이는지 확인한다."""
     assert reasons.join_reasons(["응급실 가용병상 4", None, "직선거리 4.2km"], eta) == expected
+
+
+@pytest.mark.parametrize(
+    ("patient", "expected"),
+    [
+        (
+            _patient(
+                _assessment((Department.ORTHOPEDIC_SURGERY, Department.GENERAL_SURGERY)),
+                frozenset({Resource.DELIVERY, Resource.PEDIATRIC_EMERGENCY}),
+            ),
+            ("정형외과·외과 진료 필요 예상", "소아 응급 진료·분만 필요 예상"),
+        ),
+        (_patient(_assessment((Department.ORTHOPEDIC_SURGERY,))), ("정형외과 진료 필요 예상",)),
+        (_patient(resources=frozenset({Resource.MI_REPERFUSION})), ("심근경색 재관류중재술 필요 예상",)),
+        (_patient(_assessment()), ()),
+    ],
+    ids=["depts-and-resources", "depts-only", "assessment-failed", "none"],
+)
+def test_patient_needs(patient, expected):
+    """필수 진료과와 특수 자원을 "필요 예상" 사유로 이 순서로 만들고(특수 자원은 분만을 넣고 Resource 정의 순서),
+    환자 상태 판단이 실패했거나 값이 없으면 그 사유를 빼는지 확인한다."""
+    assert reasons.patient_needs(patient) == expected

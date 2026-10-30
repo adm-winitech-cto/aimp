@@ -220,7 +220,9 @@ def test_nearest_n_candidates_are_recommended(example_request, example_patient, 
 
     assert _ids(result) == [f"H{i:02}" for i in range(11, 11 - expected, -1)]
     # 기본 병원 데이터에는 응급실 가용병상 값이 없으므로 er_beds 사유가 빠진다
-    assert result.recommendations[0].reason == "권역응급의료센터 조건 충족, 직선거리 9.0km, 도착 예정 10분"
+    assert result.recommendations[0].reason == (
+        "심근경색 재관류중재술 필요 예상, 권역응급의료센터 조건 충족, 직선거리 9.0km, 도착 예정 10분"
+    )
 
 
 def test_recommendations_come_from_nearest_m_candidates(example_request, example_patient):
@@ -331,8 +333,24 @@ def test_fallback_reason_uses_capability_tags(example_request, example_patient):
     result = _run(example_request, hospital_repository=repository)
 
     assert result.recommendations[0].reason == (
-        "지역응급의료센터 조건 충족, 직선거리 1.0km, 응급실 가용병상 3(병상 정보 오래됨), 도착 예정 10분"
+        "심근경색 재관류중재술 필요 예상, 지역응급의료센터 조건 충족, 직선거리 1.0km, 응급실 가용병상 3(병상 정보 오래됨), "
+        "도착 예정 10분"
     )
+
+
+def test_patient_needs_are_put_first_in_every_reason(example_request, example_patient):
+    """환자 상태 판단의 필수 진료과와 중증·특수 자원 판단의 특수 자원을 "필요 예상" 사유로 만들어, 최종 선정
+    fallback으로 응답할 때도 모든 추천 병원의 사유 맨 앞에 이 순서로 붙이는지 확인한다."""
+    example_patient["info"]["age"] = 7  # 15세 미만이면 소아 응급 진료 자원이 필요하다. 적용 규칙은 경증외상이다
+    repository = FakeHospitalRepository([make_hospital("A", 1.0, LEI), make_hospital("B", 2.0, LEI)])
+
+    result = _run(example_request, _open_fracture_llm(), repository)
+
+    assert result.fallback
+    assert [h.reason for h in result.recommendations] == [
+        "정형외과 진료 필요 예상, 소아 응급 진료 필요 예상, 지역응급의료기관 조건 충족, 직선거리 1.0km, 도착 예정 10분",
+        "정형외과 진료 필요 예상, 소아 응급 진료 필요 예상, 지역응급의료기관 조건 충족, 직선거리 2.0km, 도착 예정 10분",
+    ]
 
 
 def test_final_selection_llm_picks_order_and_reasons(example_request, example_patient):
@@ -353,8 +371,8 @@ def test_final_selection_llm_picks_order_and_reasons(example_request, example_pa
 
     assert _ids(result) == ["REC", "LEC"]
     assert [h.reason for h in result.recommendations] == [
-        "권역응급의료센터 조건 충족, 도착 예정 10분",
-        "직선거리 3.0km, 도착 예정 10분",
+        "심근경색 재관류중재술 필요 예상, 권역응급의료센터 조건 충족, 도착 예정 10분",
+        "심근경색 재관류중재술 필요 예상, 직선거리 3.0km, 도착 예정 10분",
     ]
     assert not result.fallback
     assert result.fallback_reason is None
@@ -388,7 +406,9 @@ def test_final_selection_failure_falls_back(example_request, example_patient, ll
     result = _run(example_request, _final_selection_llm(llm_result))
 
     assert _ids(result) == ["LEC", "REC"]
-    assert result.recommendations[0].reason == "지역응급의료센터 조건 충족, 직선거리 3.0km, 도착 예정 10분"
+    assert result.recommendations[0].reason == (
+        "심근경색 재관류중재술 필요 예상, 지역응급의료센터 조건 충족, 직선거리 3.0km, 도착 예정 10분"
+    )
     assert result.fallback
     assert result.fallback_reason == reason
     assert WarningCode.REMARK_NOT_APPLIED in result.warnings
