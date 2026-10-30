@@ -1,13 +1,20 @@
-"""진료 역량 규칙 엔진(C) 테스트. PRD_v0.1.md F-13 '진료 역량 규칙 엔진'의 가용병상 조건과 병상 신선도 태그를 확인한다."""
+"""진료 역량 규칙 엔진(C) 테스트. PRD_v0.1.md F-13 '진료 역량 규칙 엔진'의 조건과 병상 신선도 태그를 확인한다."""
 
 from datetime import datetime, timedelta
 
 import pytest
 
 from aimp.common.settings import settings
-from aimp.domain.hospital import BedCount, CongestionStatus, Hospital, IcuBedType
-from aimp.domain.patient import SevereJudgment
-from aimp.domain.types import PatientCategory, WarningCode
+from aimp.domain.hospital import (
+    AcceptanceStatus,
+    BedCount,
+    CongestionStatus,
+    DiseaseAcceptance,
+    Hospital,
+    IcuBedType,
+)
+from aimp.domain.patient import PatientAssessment, SevereJudgment
+from aimp.domain.types import PatientCategory, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
 from aimp.engines.capability import CandidateHospital
 
@@ -23,8 +30,12 @@ def _hospital(
     er_available: int | None = 1,
     icu_available: list[int | None] | None = None,
     beds_updated_at: datetime | None = FRESH,
+    disease_acceptance: dict[str, AcceptanceStatus] | None = None,
 ) -> Hospital:
-    """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다."""
+    """icu_available은 중환자실 병상 종류(일반, 신경과, ...) 순서의 가용병상 수다. None이면 중환자실 병상이 없다.
+
+    disease_acceptance는 중증질환 코드별 수용가능 값이다. None이면 수용가능 항목이 없다.
+    """
     return Hospital(
         hospital_id=hospital_id,
         name=hospital_id,
@@ -41,7 +52,9 @@ def _hospital(
         beds_updated_at=beds_updated_at,
         congestion=None,
         congestion_status=CongestionStatus.NO_DATA,
-        disease_acceptance={},
+        disease_acceptance={
+            code: DiseaseAcceptance(status, restriction=None) for code, status in (disease_acceptance or {}).items()
+        },
         equipment={},
         delivery_room=None,
         block_messages=(),
@@ -159,3 +172,61 @@ def test_cardiac_arrest_skips_all_conditions():
 
     assert candidates == [CandidateHospital(hospital, stale_beds=False)]
     assert warnings == []
+
+
+def _assessment(severe_disease_code: SevereDiseaseCode | None) -> PatientAssessment:
+    return PatientAssessment(
+        is_trauma=False,
+        required_depts=(),
+        supportive_depts=(),
+        severe_disease_code=severe_disease_code,
+        trauma_criteria=(),
+    )
+
+
+def _filter_with_assessment(
+    hospitals: list[Hospital], assessment: PatientAssessment | None
+) -> tuple[list[CandidateHospital], list[WarningCode]]:
+    return capability.filter_candidates(hospitals, NOT_SEVERE, assessment, PatientCategory.SEVERE_NON_TRAUMA, QUERIED_AT)
+
+
+STROKE = SevereDiseaseCode.MKIOSKTY2  # [재관류중재술] 뇌경색
+DISEASE_HOSPITALS = [
+    _hospital("Y", disease_acceptance={STROKE: AcceptanceStatus.AVAILABLE}),
+    _hospital("UNAVAILABLE", disease_acceptance={STROKE: AcceptanceStatus.UNAVAILABLE}),
+    _hospital("NOT_PROVIDED", disease_acceptance={STROKE: AcceptanceStatus.NOT_PROVIDED}),
+    _hospital("NO_KEY", disease_acceptance={SevereDiseaseCode.MKIOSKTY1: AcceptanceStatus.AVAILABLE}),
+]
+
+
+def test_removes_hospitals_not_accepting_severe_disease():
+    """중증응급질환 코드가 mkioskty2인 환자에게 그 코드가 Y인 병원은 남고, 불가능·정보미제공·키 없음인 병원은 빠지는지 확인한다."""
+    candidates, _ = _filter_with_assessment(DISEASE_HOSPITALS, _assessment(STROKE))
+
+    assert _ids(candidates) == ["Y"]
+
+
+def test_disease_condition_ignores_stale_tag():
+    """병상 정보 오래됨 태그가 붙는 병원에도 중증응급질환 수용가능 조건이 적용되는지 확인한다."""
+    hospitals = [
+        _hospital("STALE_Y", beds_updated_at=STALE, disease_acceptance={STROKE: AcceptanceStatus.AVAILABLE}),
+        _hospital("STALE_UNAVAILABLE", beds_updated_at=STALE, disease_acceptance={STROKE: AcceptanceStatus.UNAVAILABLE}),
+    ]
+
+    candidates, _ = _filter_with_assessment(hospitals, _assessment(STROKE))
+
+    assert _ids(candidates) == ["STALE_Y"]
+
+
+def test_disease_condition_skipped_when_assessment_failed():
+    """환자 상태 판단 결과가 None이면 수용가능 값이 불가능인 병원도 남는지 확인한다."""
+    candidates, _ = _filter_with_assessment(DISEASE_HOSPITALS, None)
+
+    assert _ids(candidates) == [hospital.hospital_id for hospital in DISEASE_HOSPITALS]
+
+
+def test_disease_condition_skipped_without_severe_disease_code():
+    """환자 상태 판단 결과의 severe_disease_code가 None이면 중증응급질환 수용가능 조건을 적용하지 않는지 확인한다."""
+    candidates, _ = _filter_with_assessment(DISEASE_HOSPITALS, _assessment(None))
+
+    assert _ids(candidates) == [hospital.hospital_id for hospital in DISEASE_HOSPITALS]
