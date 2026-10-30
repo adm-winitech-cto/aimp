@@ -9,8 +9,7 @@
     - 생리학적 기준: 외상 임계치로 판정한 생리학적 중증
     - 신체검사 소견·손상기전 기준: 환자 상태 판단 결과의 중증외상 기준 항목
     - 임계치를 둔 활력징후 항목의 측정값이 하나도 없으면 Pre-KTAS 1~2단계도 중증외상이다.
-- 환자 상태 판단 결과가 없는 환자: 외상 여부와 중증외상 기준 항목을 알 수 없으므로 외상으로 본다.
-  Pre-KTAS 1~2단계이거나 생리학적 중증이면 중증외상, 아니면 경증외상이다.
+- 환자 상태 판단 결과가 없는 환자: 외상으로 보지 않고 비외상 환자의 기준으로 판정한다.
 
 특수상황 판정: 적용 규칙이 중증외상이나 경증외상인 환자가 지침의 '의학적 질병상태 및 특수상황'에 해당하는 항목을 반환한다.
 4대 중증 구분이 중증외상인 환자도 판정 대상이다. pipeline.py는 항목이 있으면 응답에 "직접의료지도 필요" 표시를 넣는다.
@@ -48,20 +47,17 @@ def _physiological(patient: Patient, thresholds: dict[str, VitalThreshold]) -> t
 def judge(patient: Patient, assessment: PatientAssessment | None) -> PatientCategory:
     pre_ktas_severe = patient.pre_ktas.level <= SEVERE_PRE_KTAS_LEVEL
 
-    if assessment is not None and not assessment.is_trauma:
+    # 환자 상태 판단 결과가 없으면 외상으로 보지 않는다.
+    if assessment is None or not assessment.is_trauma:
         physiological_severe, _ = _physiological(patient, RULES.non_trauma_vital_signs)
         severe = pre_ktas_severe or physiological_severe
         return PatientCategory.SEVERE_NON_TRAUMA if severe else PatientCategory.MINOR_NON_TRAUMA
 
     physiological_severe, measured = _physiological(patient, RULES.trauma_vital_signs)
-    if assessment is None:
-        # 환자 상태 판단 결과가 없으면 외상으로 본다.
-        severe = pre_ktas_severe or physiological_severe
-    else:
-        injury_severe = any(
-            criterion in INJURY_FINDINGS or criterion in INJURY_MECHANISMS for criterion in assessment.trauma_criteria
-        )
-        severe = physiological_severe or injury_severe or (not measured and pre_ktas_severe)
+    injury_severe = any(
+        criterion in INJURY_FINDINGS or criterion in INJURY_MECHANISMS for criterion in assessment.trauma_criteria
+    )
+    severe = physiological_severe or injury_severe or (not measured and pre_ktas_severe)
     return PatientCategory.SEVERE_TRAUMA if severe else PatientCategory.MINOR_TRAUMA
 
 

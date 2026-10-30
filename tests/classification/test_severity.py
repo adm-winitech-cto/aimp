@@ -160,14 +160,16 @@ def test_value_equal_to_threshold_is_not_severe(example_patient):
 @pytest.mark.parametrize(
     ("level", "vitals", "category"),
     [
-        (2, {}, PatientCategory.SEVERE_TRAUMA),
-        (4, {"respiratoryRatePerMin": 30}, PatientCategory.SEVERE_TRAUMA),
-        (4, {}, PatientCategory.MINOR_TRAUMA),
+        (2, {}, PatientCategory.SEVERE_NON_TRAUMA),
+        (4, {"systolicBpMmHg": 80}, PatientCategory.SEVERE_NON_TRAUMA),
+        (4, {"respiratoryRatePerMin": 30}, PatientCategory.MINOR_NON_TRAUMA),
+        (4, {}, PatientCategory.MINOR_NON_TRAUMA),
     ],
-    ids=["pre-ktas-severe", "trauma-threshold", "minor"],
+    ids=["pre-ktas-severe", "non-trauma-threshold", "trauma-threshold-only", "minor"],
 )
-def test_missing_assessment_is_treated_as_trauma(example_patient, level, vitals, category):
-    """환자 상태 판단 결과가 없으면 외상으로 보고, Pre-KTAS 1~2단계이거나 외상 임계치를 넘으면 중증외상인지 확인한다."""
+def test_missing_assessment_is_judged_as_non_trauma(example_patient, level, vitals, category):
+    """환자 상태 판단 결과가 없으면 외상으로 보지 않고, 비외상 기준(Pre-KTAS 1~2단계, 비외상 임계치)으로 판정하는지 확인한다.
+    외상 임계치에만 걸리는 호흡수는 중증으로 판정하지 않는다."""
     example_patient["preKtas"]["level"] = level
     _set_vitals(example_patient, vitals)
 
