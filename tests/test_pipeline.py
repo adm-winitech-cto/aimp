@@ -268,3 +268,45 @@ def test_no_candidates_returns_200_with_empty_recommendations(client, example_re
 
     assert response.status_code == 200
     assert response.json()["recommendations"] == []
+
+
+def _no_er_beds_at_l0() -> FakeHospitalRepository:
+    """L0 병원(지역응급의료센터)은 응급실 가용병상이 0이고 L1 병원(지역응급의료기관)은 1인 가짜 HospitalRepository."""
+    return FakeHospitalRepository(
+        [make_hospital("LEC", 1.0, LEC, er_available=0), make_hospital("LEI", 2.0, LEI, er_available=1)]
+    )
+
+
+def test_capability_engine_moves_to_l1_when_l0_has_no_er_beds(example_request, example_patient):
+    """L0 병원은 응급실 가용병상이 0이고 L1 병원은 1이면, 진료 역량 규칙 엔진이 L0 병원을 빼서
+    L1 병원을 추천하는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"  # L0: 권역·지역응급의료센터, L1: 지역응급의료기관
+
+    result = _run(example_request, hospital_repository=_no_er_beds_at_l0())
+
+    assert _ids(result) == ["LEI"]
+    assert result.level == Level.L1
+
+
+def test_capability_engine_disabled_by_setting(example_request, example_patient, monkeypatch):
+    """capability_engine_enabled가 false면 진료 역량 규칙 엔진을 호출하지 않아, 응급실 가용병상이 0인
+    L0 병원이 추천되는지 확인한다."""
+    monkeypatch.setattr(pipeline, "settings", settings.model_copy(update={"capability_engine_enabled": False}))
+    example_patient["majorSevereType"] = "심근경색"
+
+    result = _run(example_request, hospital_repository=_no_er_beds_at_l0())
+
+    assert _ids(result) == ["LEC"]
+    assert result.level == Level.L0
+
+
+@pytest.mark.parametrize("stale", [True, False], ids=["stale", "fresh"])
+def test_stale_bed_data_warning(example_request, example_patient, stale):
+    """병상 값이 오래된 병원이 후보에 있으면 "병상 정보 오래됨" 경고를 넣고, 모두 신선하면 넣지 않는지 확인한다."""
+    example_patient["majorSevereType"] = "심근경색"
+    repository = FakeHospitalRepository([make_hospital("LEC", 1.0, LEC, stale=stale), make_hospital("REC", 2.0, REC)])
+
+    result = _run(example_request, hospital_repository=repository)
+
+    assert _ids(result) == ["LEC", "REC"]
+    assert (WarningCode.STALE_BED_DATA in result.warnings) is stale

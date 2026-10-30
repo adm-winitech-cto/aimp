@@ -39,6 +39,7 @@ class Settings(BaseModel):
     detour_threshold_km: float
     bed_data_max_age_minutes: int
     require_icu_beds: bool
+    capability_engine_enabled: bool
     assessment_timeout_seconds: float
     llm_timeout_seconds: float
     vllm_max_waiting_requests: int
