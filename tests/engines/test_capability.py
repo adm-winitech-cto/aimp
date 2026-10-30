@@ -19,7 +19,7 @@ from aimp.domain.hospital import (
 from aimp.domain.patient import PatientAssessment, SevereJudgment
 from aimp.domain.types import Department, PatientCategory, Resource, SevereDiseaseCode, WarningCode
 from aimp.engines import capability
-from aimp.engines.capability import BlockMessageJudgment, CandidateHospital
+from aimp.engines.capability import BlockingMessage, BlockMessageJudgment, CandidateHospital, TimeWindow, Weekday
 from aimp.ports.llm import LlmFailure, LlmOutput
 
 NO_BEDS = BedCount(available=None, total=None)
@@ -457,9 +457,14 @@ NS_BLOCKED = "[신경외과] 전문의 부재로 진료 불가"
 ER_FULL = "응급실 병상 포화"
 
 
-def _block_llm(*blocked_message_ids: int) -> FakeLlmClient:
-    """blocked_message_ids 번호의 메시지가 필수 진료과를 막는다고 내는 가짜 진료불가 메시지 판단 LLM."""
-    judgment = BlockMessageJudgment(blocked_message_ids=blocked_message_ids)
+def _block_llm(*blocking_messages: BlockingMessage | int) -> FakeLlmClient:
+    """blocking_messages를 내는 가짜 진료불가 메시지 판단 LLM. 정수는 시간대 없이 항상 막는 메시지의 번호다."""
+    judgment = BlockMessageJudgment(
+        blocking_messages=tuple(
+            BlockingMessage(message_id=m, when="항상", windows=()) if isinstance(m, int) else m
+            for m in blocking_messages
+        )
+    )
     return FakeLlmClient(LlmOutput(parsed=judgment, raw=judgment.model_dump_json()))
 
 
@@ -543,15 +548,56 @@ def test_block_message_llm_not_called_when_remaining_candidates_have_no_message(
     assert _ids(candidates) == ["NO_MESSAGE"]
 
 
-def test_block_message_input_has_weekday():
-    """LLM 입력 객체의 조회 시각에 요일과 평일·주말 구분이 들어가고, 필수 진료과가 열거형 정의 순서로 들어가고,
-    메시지 번호가 1부터 매겨지는지 확인한다."""
+def test_block_message_input():
+    """LLM 입력 객체에 필수 진료과가 열거형 정의 순서로 들어가고, 메시지 번호가 1부터 매겨지고, 지금 시각은
+    들어가지 않는지 확인한다."""
     depts = frozenset({Department.ORTHOPEDIC_SURGERY, Department.INTERNAL_MEDICINE})
 
-    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], depts, datetime(2026, 10, 31, 14, 5))
+    data = capability.build_input([ORTHO_BLOCKED, ER_FULL], depts)
 
     assert data == {
-        "queried_at": "2026-10-31(토, 주말) 14:05",
         "required_depts": ["내과", "정형외과"],
         "messages": [{"message_id": 1, "text": ORTHO_BLOCKED}, {"message_id": 2, "text": ER_FULL}],
     }
+
+
+WEEKDAYS_ONLY = (Weekday.MON, Weekday.TUE, Weekday.WED, Weekday.THU, Weekday.FRI)
+ALL_DAYS = tuple(Weekday)
+WEEKDAY_DAYTIME = BlockingMessage(  # "평일 9A~6P만 가능"
+    message_id=1, when="시간대 밖", windows=(TimeWindow(days=WEEKDAYS_ONLY, start="09:00", end="18:00"),)
+)
+NIGHT = BlockingMessage(  # "야간(18시~09시) 진료 불가"
+    message_id=1, when="시간대 안", windows=(TimeWindow(days=ALL_DAYS, start="18:00", end="09:00"),)
+)
+FRIDAY_NIGHT = BlockingMessage(  # "금요일 18시~09시 진료 불가"
+    message_id=1, when="시간대 안", windows=(TimeWindow(days=(Weekday.FRI,), start="18:00", end="09:00"),)
+)
+
+
+@pytest.mark.parametrize(
+    ("message", "at", "blocked"),
+    [
+        (BlockingMessage(message_id=1, when="항상", windows=()), datetime(2026, 10, 30, 10, 0), True),
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 16, 0), False),  # 금 16:00, 진료 가능 시간 안
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 9, 0), False),  # 시작 시각은 시간대에 들어간다
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 30, 18, 0), True),  # 끝 시각은 시간대에 들어가지 않는다
+        (WEEKDAY_DAYTIME, datetime(2026, 10, 31, 10, 0), True),  # 토요일
+        (NIGHT, datetime(2026, 10, 30, 16, 0), False),
+        (NIGHT, datetime(2026, 10, 30, 23, 0), True),
+        (NIGHT, datetime(2026, 10, 31, 8, 59), True),  # 자정을 넘긴 시간대
+        (FRIDAY_NIGHT, datetime(2026, 10, 31, 2, 0), True),  # 금요일 밤에 시작해 토요일 새벽까지
+        (FRIDAY_NIGHT, datetime(2026, 11, 1, 2, 0), False),  # 토요일 밤에는 시작하지 않는다
+    ],
+)
+def test_blocks_now(message, at, blocked):
+    """LLM이 옮긴 시간대로 지금 메시지가 필수 진료과를 막는지 판정하는지 확인한다."""
+    assert capability.blocks_now(message, at) is blocked
+
+
+def test_block_message_with_time_window_is_judged_at_queried_at():
+    """진료 가능 시간대만 적은 메시지는 조회 시각(금 14:00)이 그 시간대 안이면 병원을 빼지 않는지 확인한다."""
+    hospitals = [_hospital("WEEKDAY_DAYTIME", departments=ORTHO, block_messages=("[정형외과] 평일 9A~6P만 가능",))]
+
+    candidates = _filter_with_block_llm(hospitals, NEEDS_ORTHO, _block_llm(WEEKDAY_DAYTIME))
+
+    assert _ids(candidates) == ["WEEKDAY_DAYTIME"]
