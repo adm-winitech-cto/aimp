@@ -122,6 +122,12 @@
   Tmap ETA API를 호출해 ETA를 구하지만, 응답에는 아직 넣지 않는다. L1 조건으로도 후보 병원이 없으면 빈 `recommendations`를 반환하고, 병원 데이터
   조회가 실패하면 500을 반환한다. 운영 현장의 앱에는 환경 변수 `HOSPITAL_API_CLIENT_ID`,
   `HOSPITAL_API_KEY`가 있어야 하고, 없으면 앱이 시작되지 않는다. 평가셋이 아직 없어 F-12 '모델 평가'의 지표는 확인하지 않았다.
+- **`compose.yaml`이 병원정보 검색 API 인증 키를 앱 컨테이너에 넘긴다**: 앱은 환경 변수
+  `HOSPITAL_API_CLIENT_ID`, `HOSPITAL_API_KEY`가 없으면 시작되지 않지만, `compose.yaml`은 이 값을 앱에
+  넘기지 않았다. 이제 `compose.yaml`과 같은 디렉터리의 `.env`에서 두 값을 읽어 앱에 넘긴다. `.env`는
+  커밋하지 않으므로 운영 현장에서 직접 만들어야 하고, 값이 없으면 `docker compose`가 앱을 띄우지 않고
+  멈춘다. 환경 변수는 컨테이너를 새로 만들 때만 바뀌므로 처음 반영할 때는 `docker compose restart app`이
+  아니라 `docker compose up -d app`을 실행한다.
 
 ### Removed
 - **요청의 `rejectedHospitals`에 있는 병원을 추천에서 빼지 않는다**: 임시 선정 단계는
