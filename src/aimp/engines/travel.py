@@ -7,13 +7,15 @@
 from collections.abc import Iterable
 
 from aimp.common.settings import settings
-from aimp.domain.hospital import Hospital
+from aimp.engines.capability import CandidateHospital
 
 
-def nearest(hospitals: Iterable[Hospital], count: int = settings.llm_candidate_count) -> list[Hospital]:
+def nearest(
+    candidates: Iterable[CandidateHospital], count: int = settings.llm_candidate_count
+) -> list[CandidateHospital]:
     """직선거리가 가까운 순으로 앞의 count개. 후보가 count개보다 적으면 모두 반환한다.
 
     API가 직선거리를 소수 첫째 자리까지만 주므로 같은 값이 자주 나온다. 입력 순서와 관계없이 같은 결과를 내도록
     직선거리가 같으면 hospital_id 순으로 놓는다.
     """
-    return sorted(hospitals, key=lambda hospital: (hospital.distance_km, hospital.hospital_id))[:count]
+    return sorted(candidates, key=lambda c: (c.hospital.distance_km, c.hospital.hospital_id))[:count]
